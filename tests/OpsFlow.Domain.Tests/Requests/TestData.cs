@@ -1,0 +1,26 @@
+using OpsFlow.Domain.Requests;
+using OpsFlow.Domain.Users;
+
+namespace OpsFlow.Domain.Tests.Requests;
+
+internal static class TestData
+{
+    public const int ManagerId = 10;
+
+    public static readonly DateTimeOffset Now = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+
+    public static readonly Actor Employee = new(1, UserRole.Employee);
+    public static readonly Actor OtherEmployee = new(2, UserRole.Employee);
+    public static readonly Actor Admin = new(99, UserRole.Admin);
+
+    /// <summary>The default policy from BR-11.</summary>
+    public static ApprovalPolicy DefaultPolicy() => new(
+    [
+        new ApprovalPolicyRule(1, 1, StepKind.Manager, 0m),
+        new ApprovalPolicyRule(2, 2, StepKind.Finance, 5_000m),
+        new ApprovalPolicyRule(3, 3, StepKind.Director, 50_000m),
+    ]);
+
+    public static Request DraftRequest(decimal amount = 1_200m, Actor? requester = null) =>
+        Request.Create(requester ?? Employee, "New laptop", "For the new hire", RequestCategory.Purchase, amount, Now).Value;
+}

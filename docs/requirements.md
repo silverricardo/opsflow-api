@@ -73,7 +73,7 @@ Rule IDs are referenced from tests (`BR-xx` in test names or descriptions).
   | 2 | Finance | > 5,000.00 | Any `Finance` user |
   | 3 | Director | > 50,000.00 | Any `Director` user |
 
-- **BR-12** Submission fails if the requester has no manager.
+- **BR-12** Submission fails if the requester has no manager, or if their manager is inactive.
 - **BR-13** Steps are decided strictly in order; only the *current* step (lowest pending order in
   the current round) can be decided.
 - **BR-14** Possible decisions: `Approve`, `Reject`, `RequestChanges`. `Reject` and

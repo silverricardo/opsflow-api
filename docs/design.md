@@ -115,7 +115,7 @@ erDiagram
     }
     Requests {
         bigint Id PK
-        varchar(20) Reference UK "REQ-000123"
+        varchar(20) Reference UK "computed from Id: REQ-000123"
         nvarchar(200) Title
         nvarchar(4000) Description "nullable"
         varchar(32) Category
@@ -171,14 +171,14 @@ erDiagram
     }
 ```
 
-All timestamps are UTC, stored as `datetime2(3)`.
+All timestamps are stored as `datetimeoffset(3)` and written in UTC (`TimeProvider.GetUtcNow()`). This avoids `DateTimeKind` ambiguity at a cost of 3 bytes per column compared with `datetime2(3)`.
 
 ### Constraints
 
 - `CK_Requests_Amount`: `Amount > 0 AND Amount <= 1000000`
 - `CK_Requests_Status`, `CK_ApprovalSteps_Status`, and so on: each enum column is limited to its known values.
 - `UQ_ApprovalSteps_Request_Round_Order`: unique (`RequestId`, `Round`, `StepOrder`).
-- `Reference` comes from the SQL sequence `RequestReferenceSeq` and is unique.
+- `Reference` is a deterministic, persisted computed column derived from `Id` (`REQ-` + six zero-padded digits) with a unique index. A sequence would have been one more moving part for the same guarantee.
 - Foreign keys use `ON DELETE NO ACTION`. Nothing is hard-deleted in the MVP.
 - `AuditEntries` has an `INSTEAD OF UPDATE, DELETE` trigger that raises an error (BR-52). It is created in a migration.
 
@@ -245,9 +245,10 @@ ETag versions the whole aggregate.
 
 ### Error model (RFC 9457)
 
+Clients branch on `code`, not on `title` or `type`. `type` is left at the framework default, so the API does not point at a documentation domain it does not own.
+
 ```json
 {
-  "type": "https://opsflow.dev/errors/step.not_current",
   "title": "Step is not the current approval step",
   "status": 409,
   "detail": "Step 7 cannot be decided until step 6 is completed.",
@@ -260,10 +261,10 @@ ETag versions the whole aggregate.
 
 | Status | `code` values |
 |---|---|
-| 400 | `validation.failed` (with `errors` map), `query.invalid_sort` |
+| 400 | `validation.failed` (with `errors` map), `request.malformed` (bad JSON, unknown property, wrong type), `query.invalid_sort` |
 | 401 | `auth.invalid_credentials`, `auth.unauthenticated` |
-| 403 | `auth.forbidden`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `request.not_owner` |
-| 404 | `request.not_found`, `step.not_found`, `user.not_found` |
+| 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `request.not_owner` |
+| 404 | `request.not_found`, `step.not_found`, `user.not_found`, `resource.not_found` (unknown route) |
 | 409 | `request.invalid_transition`, `step.not_current`, `step.already_assigned`, `idempotency.in_progress` |
 | 412 | `concurrency.etag_mismatch` |
 | 422 | `request.requester_has_no_manager`, `idempotency.key_reused`, `user.not_eligible` |
