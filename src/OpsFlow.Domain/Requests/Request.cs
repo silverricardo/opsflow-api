@@ -158,8 +158,144 @@ public sealed class Request
         return Result.Success();
     }
 
+    /// <summary>Edits the request details (BR-03). Only the requester, only before or between approval rounds.</summary>
+    public Result Update(Actor actor, string title, string? description, RequestCategory category, decimal amount, DateTimeOffset now)
+    {
+        if (actor.UserId != RequesterId)
+        {
+            return RequestErrors.NotOwner;
+        }
+
+        if (Status is not (RequestStatus.Draft or RequestStatus.ChangesRequested))
+        {
+            return RequestErrors.InvalidTransition(Status, "edit");
+        }
+
+        var detailsError = ValidateDetails(title, description, amount);
+        if (detailsError is not null)
+        {
+            return detailsError;
+        }
+
+        var before = new { Title, Category, Amount };
+        Title = title.Trim();
+        Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        Category = category;
+        Amount = amount;
+        UpdatedAt = now;
+
+        AddAudit(actor, AuditActions.RequestUpdated, Status, Status, now, new { Before = before, After = new { Title, Category, Amount } });
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Records a decision on an approval step (BR-13..BR-15, BR-20, BR-21, BR-25). The current round's
+    /// steps must be loaded. Rejecting or requesting changes ends the round and skips the remaining steps.
+    /// </summary>
+    public Result Decide(long stepId, Actor actor, Decision decision, string? comment, DateTimeOffset now)
+    {
+        if (Status != RequestStatus.InApproval)
+        {
+            return RequestErrors.InvalidTransition(Status, "decide on");
+        }
+
+        var roundSteps = CurrentRoundSteps().ToList();
+        var step = roundSteps.SingleOrDefault(s => s.Id == stepId);
+        if (step is null)
+        {
+            return ApprovalErrors.StepNotFound;
+        }
+
+        if (step.Status != StepStatus.Pending)
+        {
+            return ApprovalErrors.StepAlreadyDecided;
+        }
+
+        if (roundSteps.First(s => s.Status == StepStatus.Pending) != step)
+        {
+            return ApprovalErrors.StepNotCurrent;
+        }
+
+        if (actor.UserId == RequesterId)
+        {
+            return ApprovalErrors.SelfApproval;
+        }
+
+        var eligibilityError = step.AssigneeId is { } assigneeId
+            ? (assigneeId == actor.UserId ? null : ApprovalErrors.NotAssignee)
+            : (ApprovalStep.IsEligibleRole(step.Kind, actor.Role) ? null : ApprovalErrors.NotEligible);
+        if (eligibilityError is not null)
+        {
+            return eligibilityError;
+        }
+
+        if (roundSteps.Any(s => s.DecidedById == actor.UserId))
+        {
+            return ApprovalErrors.DuplicateApprover;
+        }
+
+        var trimmedComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        if (trimmedComment is { Length: > ApprovalStep.CommentMaxLength })
+        {
+            return ApprovalErrors.CommentTooLong;
+        }
+
+        if (decision != Decision.Approve && trimmedComment is null)
+        {
+            return ApprovalErrors.CommentRequired;
+        }
+
+        var previousStatus = Status;
+        var (stepOutcome, action) = decision switch
+        {
+            Decision.Approve => (StepStatus.Approved, AuditActions.StepApproved),
+            Decision.Reject => (StepStatus.Rejected, AuditActions.StepRejected),
+            Decision.RequestChanges => (StepStatus.ChangesRequested, AuditActions.ChangesRequested),
+            _ => throw new ArgumentOutOfRangeException(nameof(decision), decision, "Unknown decision."),
+        };
+
+        step.RecordDecision(actor.UserId, stepOutcome, trimmedComment, now);
+
+        switch (decision)
+        {
+            case Decision.Approve when roundSteps.All(s => s.Status == StepStatus.Approved):
+                Status = RequestStatus.Approved;
+                break;
+            case Decision.Reject:
+                SkipPendingSteps(roundSteps);
+                Status = RequestStatus.Rejected;
+                CompletedAt = now;
+                break;
+            case Decision.RequestChanges:
+                SkipPendingSteps(roundSteps);
+                Status = RequestStatus.ChangesRequested;
+                break;
+        }
+
+        // Always touch the root so the aggregate's rowversion (the ETag) changes with every decision.
+        UpdatedAt = now;
+
+        AddAudit(
+            actor,
+            action,
+            previousStatus,
+            Status,
+            now,
+            new { StepId = step.Id, step.Round, step.StepOrder, step.Kind, Comment = trimmedComment });
+
+        return Result.Success();
+    }
+
     public IEnumerable<ApprovalStep> CurrentRoundSteps() =>
         _steps.Where(s => s.Round == CurrentRound).OrderBy(s => s.StepOrder);
+
+    private static void SkipPendingSteps(IEnumerable<ApprovalStep> steps)
+    {
+        foreach (var pending in steps.Where(s => s.Status == StepStatus.Pending))
+        {
+            pending.Skip();
+        }
+    }
 
     private static DomainError? ValidateDetails(string title, string? description, decimal amount)
     {

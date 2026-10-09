@@ -15,7 +15,7 @@ public static class SubmitRequestEndpoint
     public static RouteHandlerBuilder MapSubmitRequest(this IEndpointRouteBuilder routes) =>
         routes.MapPost("/{id:long}/submit", SubmitAsync)
             .WithName("SubmitRequest")
-            .WithSummary("Submit a draft (or a request returned for changes) for approval. Requires If-Match.");
+            .WithSummary("Submit a draft, or resubmit a request returned for changes (starts a new round). Requires If-Match.");
 
     private static async Task<Results<Ok<RequestDetailsResponse>, ProblemHttpResult>> SubmitAsync(
         long id,
@@ -26,23 +26,11 @@ public static class SubmitRequestEndpoint
         HttpResponse response,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(ifMatch))
-        {
-            return Problems.IfMatchRequired();
-        }
-
         var actor = principal.ToActor();
-        var request = await db.Requests.VisibleTo(actor, db.Users).SingleOrDefaultAsync(r => r.Id == id, cancellationToken);
+        var (request, problem) = await db.LoadForCommandAsync(id, actor, ifMatch, withCurrentRoundSteps: false, cancellationToken);
         if (request is null)
         {
-            return Problems.RequestNotFound();
-        }
-
-        // Fast path for stale clients. The race between this check and SaveChanges is closed by the
-        // rowversion predicate EF adds to the UPDATE (DbUpdateConcurrencyException → 412).
-        if (!ETags.Matches(ifMatch, request.RowVersion))
-        {
-            return Problems.ETagMismatch();
+            return problem!;
         }
 
         // An inactive manager cannot approve anything, so treat them as missing (BR-12).
@@ -58,12 +46,11 @@ public static class SubmitRequestEndpoint
             return submitted.Error.ToProblem();
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        if (await db.SaveAggregateAsync(cancellationToken) is { } conflict)
+        {
+            return conflict;
+        }
 
-        var details = await db.GetDetailsAsync(id, actor, cancellationToken)
-            ?? throw new InvalidOperationException("A submitted request must remain visible to its requester.");
-
-        response.SetETag(details.RowVersion);
-        return TypedResults.Ok(details.Response);
+        return await db.DetailsAfterChangeAsync(id, actor, response, cancellationToken);
     }
 }

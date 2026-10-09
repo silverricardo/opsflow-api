@@ -143,6 +143,7 @@ public class SubmitRequestTests : IntegrationTestBase
     }
 
     [Test]
+    [Repeat(20)] // races are timing-dependent: repeat so an intermittent failure cannot hide
     public async Task Submit_TwiceConcurrentlyWithSameETag_ExactlyOneSucceeds()
     {
         var (created, etag) = await CreateRequestAsync(Employee1);

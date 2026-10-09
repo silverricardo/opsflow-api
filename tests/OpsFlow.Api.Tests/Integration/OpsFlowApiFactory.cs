@@ -23,7 +23,7 @@ internal sealed class OpsFlowApiFactory(string connectionString, IReadOnlyDictio
             ["RateLimiting:TokenPermitLimit"] = "10000",
             ["RateLimiting:GlobalTokenLimit"] = "10000",
             ["RateLimiting:GlobalTokensPerSecond"] = "10000",
-            ["Serilog:MinimumLevel:Default"] = "Warning",
+            ["Serilog:MinimumLevel:Default"] = Environment.GetEnvironmentVariable("OPSFLOW_TEST_LOG_LEVEL") ?? "Error",
         };
 
         foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())

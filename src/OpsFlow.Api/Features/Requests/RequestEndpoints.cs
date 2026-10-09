@@ -8,6 +8,9 @@ public static class RequestEndpoints
 
         requests.MapCreateRequest();
         requests.MapGetRequest();
+        requests.MapUpdateRequest();
         requests.MapSubmitRequest();
+        requests.MapDecideStep();
+        requests.MapGetRequestAudit();
     }
 }

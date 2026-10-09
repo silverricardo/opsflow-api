@@ -211,7 +211,7 @@ used gets removed.
 | `POST /requests/{id}/submit` | requester | `200` + `ETag` | `If-Match`; Idempotency-Key |
 | `POST /requests/{id}/cancel` | requester | `200` + `ETag` | `If-Match`; Idempotency-Key |
 | `POST /requests/{id}/fulfil` | Finance | `200` + `ETag` | `If-Match`; Idempotency-Key |
-| `POST /requests/{id}/steps/{stepId}/decision` | eligible | `200` + `ETag` | Body `{ decision, comment }`; `If-Match`; Idempotency-Key |
+| `POST /requests/{id}/steps/{stepId}/decision` | eligible | `200` + `ETag` | Body `{ "decision": "Approve" \| "Reject" \| "RequestChanges", "comment": "…" }`; `If-Match`; Idempotency-Key |
 | `POST /requests/{id}/steps/{stepId}/claim` | eligible | `200` + `ETag` | `If-Match` |
 | `PUT /requests/{id}/steps/{stepId}/assignee` | Admin | `200` + `ETag` | Body `{ userId }`; `If-Match` |
 | `GET /requests/{id}/audit` | visible | `200` paged | Oldest first |
@@ -261,11 +261,11 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 
 | Status | `code` values |
 |---|---|
-| 400 | `validation.failed` (with `errors` map), `request.malformed` (bad JSON, unknown property, wrong type), `query.invalid_sort` |
+| 400 | `validation.failed` (with `errors` map), `request.malformed` (bad JSON, unknown property, wrong type), `query.invalid_sort`, `step.comment_required`, `step.comment_too_long` |
 | 401 | `auth.invalid_credentials`, `auth.unauthenticated` |
-| 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `request.not_owner` |
+| 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `step.not_eligible`, `request.not_owner` |
 | 404 | `request.not_found`, `step.not_found`, `user.not_found`, `resource.not_found` (unknown route) |
-| 409 | `request.invalid_transition`, `step.not_current`, `step.already_assigned`, `idempotency.in_progress` |
+| 409 | `request.invalid_transition`, `step.not_current`, `step.already_decided`, `step.already_assigned`, `idempotency.in_progress` |
 | 412 | `concurrency.etag_mismatch` |
 | 422 | `request.requester_has_no_manager`, `idempotency.key_reused`, `user.not_eligible` |
 | 428 | `concurrency.if_match_required` |
@@ -315,6 +315,16 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 - **Optimistic concurrency** comes from `RowVersion` on `Requests`. The handler first compares `If-Match` with the loaded
   version (fast `412`). EF then includes the original version in the `UPDATE`'s `WHERE` clause. This
   closes the race between load and save, and the resulting `DbUpdateConcurrencyException` maps to `412`.
+- **Every way of losing a race returns `412`.** The concurrent integration tests (run 20× each) found two
+  cases beyond the simple one:
+  1. *Duplicate children.* Two simultaneous submissions both insert round N's steps. SQL Server can hit
+     the unique index `(RequestId, Round, StepOrder)` before it reaches the rowversion check. A
+     unique-key violation while saving an aggregate is therefore also treated as "someone else changed
+     this first" (`SaveAggregateAsync`).
+  2. *Torn reads.* Loading the root and then its steps in two queries could pair an old root with
+     newer steps, producing a misleading domain error (`409 step.already_decided`) instead of `412`.
+     Steps are now loaded **before** the root. Every write changes the root in the same transaction,
+     so any commit between the two reads changes the ETag the handler checks.
 - **Idempotency** is an endpoint filter that runs before the handler:
   1. Look up (`UserId`, `Key`). If found with the same hash and completed → replay the stored status, body and headers.
      If found with a different hash → `422`. If found but not completed → `409 idempotency.in_progress`.
