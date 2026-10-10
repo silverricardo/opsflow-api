@@ -24,6 +24,8 @@ public sealed class OpsFlowDbContext(DbContextOptions<OpsFlowDbContext> options,
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampAuditEntries();

@@ -126,6 +126,30 @@ public abstract class IntegrationTestBase
         return (await ReadAsync<RequestDetailsResponse>(response), response.Headers.ETag!.Tag);
     }
 
+    /// <summary>Sends a command with optional If-Match, JSON body and Idempotency-Key.</summary>
+    protected static async Task<HttpResponseMessage> SendCommandAsync(
+        HttpClient client, HttpMethod method, string url, string? etag = null, object? body = null, string? idempotencyKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        using var message = new HttpRequestMessage(method, url);
+        if (body is not null)
+        {
+            message.Content = JsonContent.Create(body);
+        }
+
+        if (etag is not null)
+        {
+            message.Headers.TryAddWithoutValidation("If-Match", etag);
+        }
+
+        if (idempotencyKey is not null)
+        {
+            message.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        }
+
+        return await client.SendAsync(message);
+    }
+
     protected static async Task<T> ReadAsync<T>(HttpResponseMessage response)
     {
         ArgumentNullException.ThrowIfNull(response);

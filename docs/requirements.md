@@ -99,6 +99,7 @@ Rule IDs are referenced from tests (`BR-xx` in test names or descriptions).
 ### Fulfilment
 - **BR-30** Only a `Finance` user can mark an `Approved` request as `Fulfilled`
   (e.g. the purchase order was issued or the expense reimbursed).
+- **BR-31** A requester cannot mark their own request as fulfilled, even if they are in Finance.
 
 ### Visibility
 - **BR-40** `Employee` and `Manager` users can see requests they created, requests where they are

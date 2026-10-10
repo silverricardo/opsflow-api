@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using OpsFlow.Domain.Common;
 using OpsFlow.Domain.Requests;
 using OpsFlow.Domain.Users;
 
@@ -38,16 +39,41 @@ public sealed class DemoDataSeeder(
         var employee3 = await AddUserAsync("employee3", "Carla Mendes", UserRole.Employee, manager2.Id);
         await AddUserAsync("employee4", "Diogo Rocha", UserRole.Employee, manager2.Id);
 
+        var finance = await db.Users.SingleAsync(u => u.Role == UserRole.Finance, cancellationToken);
         var policy = new ApprovalPolicy(await db.ApprovalPolicyRules.AsNoTracking().ToListAsync(cancellationToken));
 
+        // One request per interesting state (Approved is shown by fulfilling one), so every screen of a demo has data.
         AddRequest(employee1, manager1, "Ergonomic office chair", RequestCategory.Purchase, 349.90m, submit: false);
-        AddRequest(employee1, manager1, "Team offsite catering", RequestCategory.Expense, 1_850m, submit: true);
-        AddRequest(employee2, manager1, "Conference tickets (3 people)", RequestCategory.Expense, 7_200m, submit: true);
+        var catering = AddRequest(employee1, manager1, "Team offsite catering", RequestCategory.Expense, 1_850m, submit: true);
+        var tickets = AddRequest(employee2, manager1, "Conference tickets (3 people)", RequestCategory.Expense, 7_200m, submit: true);
         AddRequest(employee3, manager2, "Server rack upgrade", RequestCategory.Purchase, 64_000m, submit: true);
-        AddRequest(employee3, manager2, "Taxi to client site", RequestCategory.Expense, 42.50m, submit: false);
+        var dinner = AddRequest(employee3, manager2, "Client dinner", RequestCategory.Expense, 380m, submit: true);
+        var licences = AddRequest(employee2, manager1, "Design software licences", RequestCategory.Purchase, 2_400m, submit: true);
+        var toner = AddRequest(employee3, manager2, "Printer toner", RequestCategory.Purchase, 90m, submit: false);
+        await db.SaveChangesAsync(cancellationToken); // steps need IDs before they can be decided
+
+        Decide(catering, manager1, Decision.Approve, "Approved for Q4 offsite.");
+        Apply(catering.Fulfil(Actor(finance), now));
+        Decide(tickets, manager1, Decision.Approve, null); // now waiting in the Finance pool
+        Decide(dinner, manager2, Decision.Reject, "Not a client meeting; use the team budget.");
+        Decide(licences, manager1, Decision.RequestChanges, "Please split design and video licences.");
+        Apply(toner.Cancel(Actor(employee3), now));
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Demo data seeded: 9 users, 5 requests.");
+        logger.LogInformation("Demo data seeded: 9 users, 7 requests in six statuses.");
+
+        static Actor Actor(User user) => new(user.Id, user.Role);
+
+        static void Apply(Result result)
+        {
+            if (!result.IsSuccess)
+            {
+                throw new InvalidOperationException($"Seed data violates a business rule: {result.Error.Code}");
+            }
+        }
+
+        void Decide(Request request, User decider, Decision decision, string? comment) =>
+            Apply(request.Decide(request.CurrentRoundSteps().First(s => s.Status == StepStatus.Pending).Id, Actor(decider), decision, comment, now));
 
         async Task<User> AddUserAsync(string login, string displayName, UserRole role, int? managerId)
         {
@@ -58,20 +84,16 @@ public sealed class DemoDataSeeder(
             return user;
         }
 
-        void AddRequest(User requester, User manager, string title, RequestCategory category, decimal amount, bool submit)
+        Request AddRequest(User requester, User manager, string title, RequestCategory category, decimal amount, bool submit)
         {
-            var actor = new Actor(requester.Id, requester.Role);
-            var request = Request.Create(actor, title, description: null, category, amount, now).Value;
+            var request = Request.Create(Actor(requester), title, description: null, category, amount, now).Value;
             if (submit)
             {
-                var submitted = request.Submit(actor, manager.Id, policy, now);
-                if (!submitted.IsSuccess)
-                {
-                    throw new InvalidOperationException($"Seed data violates a business rule: {submitted.Error.Code}");
-                }
+                Apply(request.Submit(Actor(requester), manager.Id, policy, now));
             }
 
             db.Requests.Add(request);
+            return request;
         }
     }
 }

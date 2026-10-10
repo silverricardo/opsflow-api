@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpsFlow.Api.Infrastructure.Health;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Correlation;
 using OpsFlow.Api.Infrastructure.Errors;
@@ -46,6 +47,7 @@ public static class ServiceRegistration
         services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName);
         services.AddOptions<SeedOptions>().BindConfiguration(SeedOptions.SectionName);
         services.AddScoped<DemoDataSeeder>();
+        services.AddHostedService<IdempotencyCleanupService>();
 
         services.AddValidatorsFromAssemblyContaining<OpsFlowDbContext>(ServiceLifetime.Singleton);
         services.AddOpsFlowProblemDetails();

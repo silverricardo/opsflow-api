@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
 using OpsFlow.Api.Persistence;
 using OpsFlow.Domain.Requests;
@@ -14,6 +15,7 @@ public static class SubmitRequestEndpoint
 {
     public static RouteHandlerBuilder MapSubmitRequest(this IEndpointRouteBuilder routes) =>
         routes.MapPost("/{id:long}/submit", SubmitAsync)
+            .WithIdempotency()
             .WithName("SubmitRequest")
             .WithSummary("Submit a draft, or resubmit a request returned for changes (starts a new round). Requires If-Match.");
 

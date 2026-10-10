@@ -48,6 +48,7 @@ public static class AuthenticationSetup
         // Secure by default: every endpoint requires an authenticated user unless it opts out explicitly.
         services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        services.AddOpsFlowPolicies();
 
         return services;
     }

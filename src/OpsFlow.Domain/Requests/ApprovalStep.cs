@@ -58,4 +58,6 @@ public sealed class ApprovalStep
     }
 
     internal void Skip() => Status = StepStatus.Skipped;
+
+    internal void AssignTo(int userId) => AssigneeId = userId;
 }

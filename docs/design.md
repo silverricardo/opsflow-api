@@ -161,11 +161,13 @@ erDiagram
     IdempotencyRecords {
         int UserId PK
         varchar(100) Key PK
-        varchar(200) Endpoint
+        varchar(300) Endpoint
         binary(32) RequestHash "SHA-256"
         int StatusCode "nullable while in progress"
-        nvarchar(max) ResponseBody "nullable"
-        varchar(200) ResponseHeaders "Location, ETag"
+        varbinary(max) ResponseBody "nullable"
+        varchar(100) ResponseContentType "nullable"
+        varchar(100) ResponseETag "nullable"
+        varchar(300) ResponseLocation "nullable"
         datetime2 CreatedAt
         datetime2 ExpiresAt
     }
@@ -225,6 +227,8 @@ used gets removed.
 - `pageSize` defaults to 20, with a maximum of 100. `page` starts at 1.
 - `sort` accepts one whitelisted field (`createdAt`, `updatedAt`, `amount`, `reference`). A `-`
   prefix means descending, and the default is `-createdAt`. `Id` is always added as a tiebreaker so the order is stable.
+  An unknown field returns `400 validation.failed` with an `errors.sort` entry.
+- `createdFrom` / `createdTo` are calendar dates (`yyyy-MM-dd`) interpreted in UTC, and both bounds are inclusive.
 - `q` matches the start of `Reference` or any part of `Title`.
 - Response:
 
@@ -261,9 +265,9 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 
 | Status | `code` values |
 |---|---|
-| 400 | `validation.failed` (with `errors` map), `request.malformed` (bad JSON, unknown property, wrong type), `query.invalid_sort`, `step.comment_required`, `step.comment_too_long` |
+| 400 | `validation.failed` (with `errors` map, including query parameters), `request.malformed` (bad JSON, unknown property, wrong type), `idempotency.invalid_key`, `step.comment_required`, `step.comment_too_long` |
 | 401 | `auth.invalid_credentials`, `auth.unauthenticated` |
-| 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `step.not_eligible`, `request.not_owner` |
+| 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `step.not_eligible`, `step.reassign_not_allowed`, `request.not_owner`, `request.fulfil_not_allowed`, `request.self_fulfilment` |
 | 404 | `request.not_found`, `step.not_found`, `user.not_found`, `resource.not_found` (unknown route) |
 | 409 | `request.invalid_transition`, `step.not_current`, `step.already_decided`, `step.already_assigned`, `idempotency.in_progress` |
 | 412 | `concurrency.etag_mismatch` |
@@ -332,6 +336,9 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
   3. Store the response on success. On a `5xx`, delete the record so the client can retry.
      Responses in the `4xx` range are stored, because retrying an identical invalid command should give the same answer.
   4. Records expire after 24 hours. A background cleanup runs hourly.
+  5. Replayed responses are byte-for-byte identical (body stored as `varbinary`, plus status, content type,
+     `ETag` and `Location`). They carry `Idempotent-Replayed: true`. The request hash covers method, path,
+     `If-Match` and body. Keys are scoped per user and must match `^[A-Za-z0-9._:-]{1,100}$`.
 
   The reservation and the command use separate transactions (a deliberate trade-off — see ADR-005).
 

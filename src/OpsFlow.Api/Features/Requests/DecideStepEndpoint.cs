@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
 using OpsFlow.Api.Infrastructure.Validation;
 using OpsFlow.Api.Persistence;
@@ -30,6 +31,7 @@ public static class DecideStepEndpoint
 {
     public static RouteHandlerBuilder MapDecideStep(this IEndpointRouteBuilder routes) =>
         routes.MapPost("/{id:long}/steps/{stepId:long}/decision", DecideAsync)
+            .WithIdempotency()
             .WithValidation<DecisionBody>()
             .WithName("DecideStep")
             .WithSummary("Approve, reject or request changes on the current approval step. Requires If-Match.");

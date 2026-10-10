@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
 using OpsFlow.Api.Infrastructure.Validation;
 using OpsFlow.Api.Persistence;
@@ -13,6 +14,7 @@ public static class CreateRequestEndpoint
 {
     public static RouteHandlerBuilder MapCreateRequest(this IEndpointRouteBuilder routes) =>
         routes.MapPost("/", CreateAsync)
+            .WithIdempotency()
             .WithValidation<RequestDetailsBody>()
             .WithName("CreateRequest")
             .WithSummary("Create a draft request.");

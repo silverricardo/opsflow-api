@@ -286,8 +286,145 @@ public sealed class Request
         return Result.Success();
     }
 
+    /// <summary>Assigns an unassigned pool step of the current round to the caller (BR-23).</summary>
+    public Result ClaimStep(long stepId, Actor actor, DateTimeOffset now)
+    {
+        var (step, error) = FindPendingStep(stepId);
+        if (step is null)
+        {
+            return error!;
+        }
+
+        if (step.AssigneeId is not null)
+        {
+            return ApprovalErrors.StepAlreadyAssigned;
+        }
+
+        if (actor.UserId == RequesterId)
+        {
+            return ApprovalErrors.SelfApproval;
+        }
+
+        if (!ApprovalStep.IsEligibleRole(step.Kind, actor.Role))
+        {
+            return ApprovalErrors.NotEligible;
+        }
+
+        if (CurrentRoundSteps().Any(s => s.DecidedById == actor.UserId))
+        {
+            return ApprovalErrors.DuplicateApprover;
+        }
+
+        step.AssignTo(actor.UserId);
+        UpdatedAt = now;
+        AddAudit(actor, AuditActions.StepClaimed, Status, Status, now, new { StepId = step.Id, step.Round, step.StepOrder, step.Kind });
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// An administrator moves a pending step to another eligible, active user (BR-24), e.g. when the
+    /// assignee is absent. Segregation of duties still applies to the new assignee.
+    /// </summary>
+    public Result ReassignStep(long stepId, Actor admin, Actor newAssignee, bool newAssigneeIsActive, DateTimeOffset now)
+    {
+        if (admin.Role != UserRole.Admin)
+        {
+            return ApprovalErrors.ReassignNotAllowed;
+        }
+
+        var (step, error) = FindPendingStep(stepId);
+        if (step is null)
+        {
+            return error!;
+        }
+
+        var cannotAssign = !newAssigneeIsActive
+            || !ApprovalStep.IsEligibleRole(step.Kind, newAssignee.Role)
+            || newAssignee.UserId == RequesterId
+            || CurrentRoundSteps().Any(s => s.DecidedById == newAssignee.UserId);
+        if (cannotAssign)
+        {
+            return ApprovalErrors.AssigneeNotEligible;
+        }
+
+        var previousAssigneeId = step.AssigneeId;
+        step.AssignTo(newAssignee.UserId);
+        UpdatedAt = now;
+        AddAudit(
+            admin,
+            AuditActions.StepReassigned,
+            Status,
+            Status,
+            now,
+            new { StepId = step.Id, step.Round, step.StepOrder, step.Kind, FromAssigneeId = previousAssigneeId, ToAssigneeId = newAssignee.UserId });
+        return Result.Success();
+    }
+
+    /// <summary>The requester withdraws the request (BR-04, BR-17). The current round's steps must be loaded.</summary>
+    public Result Cancel(Actor actor, DateTimeOffset now)
+    {
+        if (actor.UserId != RequesterId)
+        {
+            return RequestErrors.NotOwner;
+        }
+
+        if (Status is not (RequestStatus.Draft or RequestStatus.InApproval or RequestStatus.ChangesRequested))
+        {
+            return RequestErrors.InvalidTransition(Status, "cancel");
+        }
+
+        var previousStatus = Status;
+        SkipPendingSteps(CurrentRoundSteps());
+        Status = RequestStatus.Cancelled;
+        CompletedAt = now;
+        UpdatedAt = now;
+        AddAudit(actor, AuditActions.RequestCancelled, previousStatus, Status, now, details: null);
+        return Result.Success();
+    }
+
+    /// <summary>Finance records that an approved request was fulfilled (BR-30, BR-31).</summary>
+    public Result Fulfil(Actor actor, DateTimeOffset now)
+    {
+        if (actor.Role != UserRole.Finance)
+        {
+            return RequestErrors.FulfilNotAllowed;
+        }
+
+        if (actor.UserId == RequesterId)
+        {
+            return RequestErrors.SelfFulfilment;
+        }
+
+        if (Status != RequestStatus.Approved)
+        {
+            return RequestErrors.InvalidTransition(Status, "fulfil");
+        }
+
+        Status = RequestStatus.Fulfilled;
+        CompletedAt = now;
+        UpdatedAt = now;
+        AddAudit(actor, AuditActions.RequestFulfilled, RequestStatus.Approved, Status, now, details: null);
+        return Result.Success();
+    }
+
     public IEnumerable<ApprovalStep> CurrentRoundSteps() =>
         _steps.Where(s => s.Round == CurrentRound).OrderBy(s => s.StepOrder);
+
+    private (ApprovalStep? Step, DomainError? Error) FindPendingStep(long stepId)
+    {
+        if (Status != RequestStatus.InApproval)
+        {
+            return (null, RequestErrors.InvalidTransition(Status, "change the approval steps of"));
+        }
+
+        var step = CurrentRoundSteps().SingleOrDefault(s => s.Id == stepId);
+        if (step is null)
+        {
+            return (null, ApprovalErrors.StepNotFound);
+        }
+
+        return step.Status == StepStatus.Pending ? (step, null) : (null, ApprovalErrors.StepAlreadyDecided);
+    }
 
     private static void SkipPendingSteps(IEnumerable<ApprovalStep> steps)
     {

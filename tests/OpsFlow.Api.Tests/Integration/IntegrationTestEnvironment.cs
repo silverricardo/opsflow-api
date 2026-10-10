@@ -66,6 +66,6 @@ public sealed class IntegrationTestEnvironment
         await using var scope = Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OpsFlowDbContext>();
         await db.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE [AuditEntries]; DELETE FROM [ApprovalSteps]; DELETE FROM [Requests];");
+            "TRUNCATE TABLE [AuditEntries]; DELETE FROM [ApprovalSteps]; DELETE FROM [Requests]; DELETE FROM [IdempotencyRecords];");
     }
 }

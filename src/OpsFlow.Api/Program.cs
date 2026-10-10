@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using OpsFlow.Api.Features.Approvals;
 using OpsFlow.Api.Features.Auth;
 using OpsFlow.Api.Features.Profile;
 using OpsFlow.Api.Features.Requests;
+using OpsFlow.Api.Features.Users;
 using OpsFlow.Api.Infrastructure;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Correlation;
 using OpsFlow.Api.Infrastructure.Health;
 using OpsFlow.Api.Infrastructure.Http;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Persistence.Seeding;
 using Scalar.AspNetCore;
 using Serilog;
@@ -36,6 +39,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+app.UseIdempotencyBuffering();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
@@ -62,6 +66,8 @@ var api = app.MapGroup("/api/v1");
 api.MapTokenEndpoint();
 api.MapMeEndpoint();
 api.MapRequestEndpoints();
+api.MapInboxEndpoint();
+api.MapListUsersEndpoint();
 
 await app.InitializeDatabaseAsync();
 await app.RunAsync();

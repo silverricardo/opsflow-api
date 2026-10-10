@@ -15,6 +15,12 @@ public static class RequestErrors
         "The requester has no manager, so the approval chain cannot be created.",
         ErrorType.Unprocessable);
 
+    public static readonly DomainError FulfilNotAllowed = new(
+        "request.fulfil_not_allowed", "Only Finance can mark a request as fulfilled.", ErrorType.Forbidden);
+
+    public static readonly DomainError SelfFulfilment = new(
+        "request.self_fulfilment", "You cannot mark your own request as fulfilled.", ErrorType.Forbidden);
+
     public static DomainError InvalidTransition(RequestStatus from, string action) => new(
         "request.invalid_transition",
         $"Cannot {action} a request in status '{from}'.",

@@ -4,8 +4,10 @@ Approval workflows for purchase and expense requests. Approval chains are driven
 duties is enforced, and every action leaves a full audit trail.
 Built with ASP.NET Core 10, EF Core 10 and SQL Server.
 
-> 🚧 Work in progress. The first vertical slice is in place (sign-in, create, submit, view).
-> Approval decisions, assignment, lists and CI come next. See [docs/requirements.md](docs/requirements.md).
+> 🚧 Work in progress. The full approval workflow is implemented and tested: create, edit, submit, approve,
+> reject, request changes, resubmit, claim, reassign, cancel and fulfil. Also in place: filtered lists, an
+> approvals inbox, idempotent retries and a per-request audit history. CI, load testing and the deployment guide
+> come next. See [docs/requirements.md](docs/requirements.md).
 
 ## Run it locally (Docker)
 
@@ -19,7 +21,8 @@ docker compose up -d --build
 - API reference (Scalar): http://localhost:8080/scalar
 - Health: http://localhost:8080/health/ready
 - Demo users: `employee1@opsflow.local`, `manager1@opsflow.local`, `finance@opsflow.local`, `director@opsflow.local`,
-  `admin@opsflow.local`, … with the password from `SEED_DEMO_PASSWORD` in your `.env`.
+  `admin@opsflow.local`, … with the password from `SEED_DEMO_PASSWORD` in your `.env`. The seed data includes
+  requests in every stage, so `finance@opsflow.local` finds one waiting in `GET /api/v1/approvals/inbox`.
 
 ```bash
 # Get a token, then create and submit a request
@@ -59,7 +62,8 @@ dotnet test
 - `OpsFlow.Domain.Tests`: business rules. No dependencies, runs in about a second.
 - `OpsFlow.Api.Tests`: API unit tests, plus integration tests that start a real SQL Server 2022 container through
   Testcontainers (Docker required). The API is hosted in-process, migrations run as they would in production, and
-  data is reset between tests.
+  data is reset between tests. The race-condition tests repeat 10–20 times per run. Set
+  `OPSFLOW_TEST_LOG_LEVEL=Information` to see the API's logs while debugging a test.
 
 ## Documentation
 
