@@ -23,18 +23,21 @@ internal sealed class ApprovalStepConfiguration : IEntityTypeConfiguration<Appro
         builder.HasOne<User>().WithMany().HasForeignKey(s => s.AssigneeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<User>().WithMany().HasForeignKey(s => s.DecidedById).OnDelete(DeleteBehavior.Restrict);
 
+        // Visibility (BR-40): "requests where I am or was the assignee / the decider", any status.
+        // Named indexes: an unnamed HasIndex on the same column would return (and reconfigure) one index.
+        builder.HasIndex(s => s.AssigneeId, "IX_ApprovalSteps_AssigneeId").IncludeProperties(s => s.RequestId);
+        builder.HasIndex(s => s.DecidedById, "IX_ApprovalSteps_DecidedById").IncludeProperties(s => s.RequestId);
+
         builder.HasIndex(s => new { s.RequestId, s.Round, s.StepOrder }).IsUnique();
 
         // Inbox: pending steps assigned to me.
-        builder.HasIndex(s => s.AssigneeId)
+        builder.HasIndex(s => s.AssigneeId, "IX_ApprovalSteps_AssigneeId_Pending")
             .HasFilter(PendingFilter)
-            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder, s.Kind })
-            .HasDatabaseName("IX_ApprovalSteps_AssigneeId_Pending");
+            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder, s.Kind });
 
         // Inbox: unassigned pending steps in my role's pool.
-        builder.HasIndex(s => s.Kind)
+        builder.HasIndex(s => s.Kind, "IX_ApprovalSteps_Kind_PendingUnassigned")
             .HasFilter($"{PendingFilter} AND [AssigneeId] IS NULL")
-            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder })
-            .HasDatabaseName("IX_ApprovalSteps_Kind_PendingUnassigned");
+            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder });
     }
 }

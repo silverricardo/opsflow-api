@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
-using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
+using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Persistence;
 using OpsFlow.Domain.Requests;
 

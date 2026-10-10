@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
+using OpsFlow.Api.Infrastructure.Observability;
 using OpsFlow.Api.Persistence;
 
 namespace OpsFlow.Api.Infrastructure.Idempotency;
@@ -16,7 +17,7 @@ namespace OpsFlow.Api.Infrastructure.Idempotency;
 /// rejected; a retry while the first is still running gets 409. Server errors release the key so the
 /// client can retry. Without the header, requests behave normally.
 /// </summary>
-public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeProvider clock) : IEndpointFilter
+public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeProvider clock, OpsFlowMetrics metrics) : IEndpointFilter
 {
     public const string HeaderName = "Idempotency-Key";
     public const string ReplayedHeader = "Idempotent-Replayed";
@@ -56,6 +57,7 @@ public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeP
 
         if (existing is not null)
         {
+            metrics.IdempotentReplay();
             return new ReplayedResult(existing);
         }
 

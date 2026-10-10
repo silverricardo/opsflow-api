@@ -2,8 +2,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
-using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
+using OpsFlow.Api.Infrastructure.Idempotency;
+using OpsFlow.Api.Infrastructure.Observability;
 using OpsFlow.Api.Infrastructure.Validation;
 using OpsFlow.Api.Persistence;
 using OpsFlow.Domain.Requests;
@@ -24,6 +25,7 @@ public static class CreateRequestEndpoint
         ClaimsPrincipal principal,
         OpsFlowDbContext db,
         TimeProvider clock,
+        OpsFlowMetrics metrics,
         HttpResponse response,
         CancellationToken cancellationToken)
     {
@@ -36,6 +38,7 @@ public static class CreateRequestEndpoint
 
         db.Requests.Add(created.Value);
         await db.SaveChangesAsync(cancellationToken);
+        metrics.RequestCreated(created.Value.Category);
 
         var details = await db.GetDetailsAsync(created.Value.Id, actor, cancellationToken)
             ?? throw new InvalidOperationException("A newly created request must be visible to its requester.");

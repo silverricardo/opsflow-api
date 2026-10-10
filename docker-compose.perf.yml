@@ -1,0 +1,32 @@
+# Load-test stack (see perf/README.md). Use together with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.perf.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.perf.yml run --rm k6 run /scripts/baseline.js
+services:
+  api:
+    environment:
+      # Production-like settings: JSON logs at Information, no SQL command logging, no API docs UI.
+      ASPNETCORE_ENVIRONMENT: Performance
+      ConnectionStrings__OpsFlow: "Server=sqlserver,1433;Database=OpsFlowPerf;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=True"
+      Database__MigrateOnStartup: "true"
+      Seed__Enabled: "true"
+      Seed__Mode: Performance
+      Seed__PerformanceRequests: ${PERF_REQUESTS:-100000}
+      Jwt__AccessTokenLifetimeMinutes: "120"
+      # The test signs in many users from one IP and drives load per user: lift the protective limits.
+      RateLimiting__TokenPermitLimit: "100000"
+      RateLimiting__GlobalTokenLimit: "100000"
+      RateLimiting__GlobalTokensPerSecond: "100000"
+
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ["perf"]
+    depends_on:
+      - api
+    environment:
+      BASE_URL: http://api:8080
+      PERF_PASSWORD: ${SEED_DEMO_PASSWORD}
+      VUS: ${PERF_VUS:-20}
+      DURATION: ${PERF_DURATION:-2m}
+    volumes:
+      - ./perf/k6:/scripts:ro
+      - ./perf/results:/results

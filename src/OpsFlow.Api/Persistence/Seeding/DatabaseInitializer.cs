@@ -22,14 +22,24 @@ public static class DatabaseInitializer
         if (database.MigrateOnStartup)
         {
             logger.LogInformation("Applying database migrations.");
-            // EF Core takes a database-level lock, so concurrent instances do not race.
-            await services.GetRequiredService<OpsFlowDbContext>().Database.MigrateAsync(cancellationToken);
+            // EF Core takes a database-level lock, so concurrent instances do not race. Index builds on large
+            // tables easily exceed the default 30 s command timeout (seen with 100k requests), hence the longer one.
+            var db = services.GetRequiredService<OpsFlowDbContext>();
+            db.Database.SetCommandTimeout(DesignTimeDbContextFactory.MigrationCommandTimeout);
+            await db.Database.MigrateAsync(cancellationToken);
         }
 
         if (seed.Enabled)
         {
             SeedGuard.EnsureSeedingAllowed(app.Environment, seed);
-            await services.GetRequiredService<DemoDataSeeder>().SeedAsync(seed.DemoPassword!, cancellationToken);
+            if (seed.Mode == SeedMode.Performance)
+            {
+                await services.GetRequiredService<PerformanceDataSeeder>().SeedAsync(seed.DemoPassword!, seed.PerformanceRequests, cancellationToken);
+            }
+            else
+            {
+                await services.GetRequiredService<DemoDataSeeder>().SeedAsync(seed.DemoPassword!, cancellationToken);
+            }
         }
     }
 }

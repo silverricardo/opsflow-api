@@ -13,18 +13,30 @@ internal static class RequestQueries
     /// Visibility rules BR-40/BR-41, applied in SQL. Requests outside this set are reported as
     /// not found (BR-42), so callers cannot probe which IDs exist.
     /// </summary>
-    public static IQueryable<Request> VisibleTo(this IQueryable<Request> requests, Actor actor, IQueryable<User> users)
+    /// <remarks>
+    /// Written as <c>Id IN (… UNION …)</c> on purpose. The equivalent <c>OR</c> of three conditions defeated
+    /// every index: the baseline load test measured ~740k logical reads per COUNT for an employee. Each
+    /// branch here is an index seek (see perf/README.md).
+    /// </remarks>
+    public static IQueryable<Request> VisibleTo(this IQueryable<Request> requests, Actor actor, OpsFlowDbContext db)
     {
+        ArgumentNullException.ThrowIfNull(db);
         if (actor.Role is UserRole.Finance or UserRole.Director or UserRole.Admin)
         {
             return requests;
         }
 
         var userId = actor.UserId;
-        return requests.Where(r =>
-            r.RequesterId == userId
-            || r.Steps.Any(s => s.AssigneeId == userId || s.DecidedById == userId)
-            || users.Any(u => u.Id == r.RequesterId && u.ManagerId == userId));
+        var visibleIds = db.Requests.Where(r => r.RequesterId == userId).Select(r => r.Id)
+            .Union(db.ApprovalSteps.Where(s => s.AssigneeId == userId).Select(s => s.RequestId))
+            .Union(db.ApprovalSteps.Where(s => s.DecidedById == userId).Select(s => s.RequestId))
+            .Union(
+                from report in db.Users
+                where report.ManagerId == userId
+                join r in db.Requests on report.Id equals r.RequesterId
+                select r.Id);
+
+        return requests.Where(r => visibleIds.Contains(r.Id));
     }
 
     /// <summary>One round trip: the request, its current-round steps and the display names they reference.</summary>
@@ -34,7 +46,7 @@ internal static class RequestQueries
         Actor actor,
         CancellationToken cancellationToken) =>
         db.Requests
-            .VisibleTo(actor, db.Users)
+            .VisibleTo(actor, db)
             .Where(r => r.Id == requestId)
             .Select(r => new RequestDetailsRow(
                 new RequestDetailsResponse(

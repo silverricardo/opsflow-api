@@ -21,4 +21,16 @@ public sealed class SeedOptions
 
     /// <summary>Password for every demo user. Secret: comes from configuration, never from source code.</summary>
     public string? DemoPassword { get; set; }
+
+    /// <summary><c>Demo</c> (a small organisation) or <c>Performance</c> (bulk data for load tests).</summary>
+    public SeedMode Mode { get; set; } = SeedMode.Demo;
+
+    /// <summary>Number of requests created in <see cref="SeedMode.Performance"/> mode.</summary>
+    public int PerformanceRequests { get; set; } = 100_000;
+}
+
+public enum SeedMode
+{
+    Demo,
+    Performance,
 }

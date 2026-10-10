@@ -36,6 +36,23 @@ dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.underscore_camel.capitalization = camel_case
 dotnet_naming_style.underscore_camel.required_prefix = _
 
+# Constants and static readonly fields are PascalCase (more specific rules take precedence).
+dotnet_naming_rule.private_constants_pascal.symbols = private_constants
+dotnet_naming_rule.private_constants_pascal.style = pascal
+dotnet_naming_rule.private_constants_pascal.severity = warning
+dotnet_naming_symbols.private_constants.applicable_kinds = field
+dotnet_naming_symbols.private_constants.applicable_accessibilities = private
+dotnet_naming_symbols.private_constants.required_modifiers = const
+
+dotnet_naming_rule.private_static_readonly_pascal.symbols = private_static_readonly
+dotnet_naming_rule.private_static_readonly_pascal.style = pascal
+dotnet_naming_rule.private_static_readonly_pascal.severity = warning
+dotnet_naming_symbols.private_static_readonly.applicable_kinds = field
+dotnet_naming_symbols.private_static_readonly.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_readonly.required_modifiers = static, readonly
+
+dotnet_naming_style.pascal.capitalization = pascal_case
+
 # Analyzer tuning (each suppression is deliberate)
 # CA2007: ASP.NET Core has no SynchronizationContext; ConfigureAwait adds noise only.
 dotnet_diagnostic.CA2007.severity = none

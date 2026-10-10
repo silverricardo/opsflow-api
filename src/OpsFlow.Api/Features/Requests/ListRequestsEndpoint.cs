@@ -104,7 +104,7 @@ public static class ListRequestsEndpoint
         OpsFlowDbContext db,
         CancellationToken cancellationToken)
     {
-        var requests = db.Requests.VisibleTo(principal.ToActor(), db.Users);
+        var requests = db.Requests.VisibleTo(principal.ToActor(), db);
 
         if (query.Status is { } status)
         {

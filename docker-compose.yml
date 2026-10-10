@@ -29,8 +29,20 @@ services:
       ConnectionStrings__OpsFlow: "Server=sqlserver,1433;Database=OpsFlow;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=True"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in .env}
       Seed__DemoPassword: ${SEED_DEMO_PASSWORD:?Set SEED_DEMO_PASSWORD in .env}
+      # Telemetry is exported only when this is set, e.g. to the dashboard below (see docs/operations.md).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "8080:8080"
+
+  # Optional: traces and metrics UI. Start with
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889 docker compose --profile observability up -d
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6.1
+    profiles: ["observability"]
+    environment:
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true" # local only
+    ports:
+      - "18888:18888"
 
 volumes:
   sqlserver-data:

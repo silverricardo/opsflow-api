@@ -1,0 +1,91 @@
+name: Performance baseline
+
+# Manual only: a load test is an experiment to run deliberately, not on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: Requests in the performance seed
+        default: "100000"
+      vus:
+        description: Virtual users in the measured phase
+        default: "20"
+      duration:
+        description: Duration of the measured phase (k6 syntax)
+        default: "2m"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: k6 baseline on a GitHub-hosted runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PERF_REQUESTS: ${{ inputs.requests }}
+      PERF_VUS: ${{ inputs.vus }}
+      PERF_DURATION: ${{ inputs.duration }}
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.perf.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create throwaway secrets for this run
+        run: |
+          {
+            echo "MSSQL_SA_PASSWORD=Ci-$(openssl rand -hex 12)-Aa1!"
+            echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)"
+            echo "SEED_DEMO_PASSWORD=Perf-$(openssl rand -hex 12)"
+          } > .env
+          mkdir -p perf/results
+
+      - name: Record the environment
+        run: |
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "runner: ubuntu-24.04 (GitHub-hosted)"
+            echo "cpus: $(nproc)"; lscpu | grep -E 'Model name' || true
+            free -h | head -2
+            docker version --format 'docker: {{.Server.Version}}'
+            echo "requests: $PERF_REQUESTS, vus: $PERF_VUS, duration: $PERF_DURATION"
+          } | tee perf/results/environment.txt
+
+      - name: Start the stack and seed performance data
+        run: |
+          $COMPOSE up -d --build
+          for i in $(seq 1 180); do
+            if $COMPOSE logs api 2>&1 | grep -q "Performance seed finished"; then break; fi
+            if $COMPOSE logs api 2>&1 | grep -qE "Unhandled|Application startup exception"; then $COMPOSE logs api; exit 1; fi
+            sleep 10
+          done
+          $COMPOSE logs api 2>&1 | grep "Performance seed finished" | tee -a perf/results/environment.txt
+
+      - name: Run k6
+        # Threshold breaches make k6 exit non-zero; keep going so the results are always published.
+        continue-on-error: true
+        run: $COMPOSE run --rm k6 run /scripts/baseline.js 2>&1 | tee perf/results/k6-output.txt
+
+      - name: Collect database statistics
+        if: always()
+        run: |
+          $COMPOSE cp perf/sql/top-queries.sql sqlserver:/tmp/top-queries.sql
+          set -a; . ./.env; set +a
+          $COMPOSE exec -T sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -W -s '|' \
+            -i /tmp/top-queries.sql | tee perf/results/top-queries.txt
+          $COMPOSE logs api > perf/results/api.log 2>&1
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## Performance baseline'
+            echo '```'; cat perf/results/environment.txt; echo '```'
+            echo '```'; sed -n '/THRESHOLDS/,$p' perf/results/k6-output.txt | head -120; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: perf-results
+          path: perf/results
+          retention-days: 30
