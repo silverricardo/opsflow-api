@@ -120,22 +120,41 @@ The demo data covers six statuses: draft, in approval, changes requested, reject
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/token -H 'Content-Type: application/json' \
-  -d '{"email":"employee1@opsflow.local","password":"<SEED_DEMO_PASSWORD>"}' | jq -r .accessToken)
+  -d '{"email":"employee1@opsflow.local","password":"<SEED_DEMO_PASSWORD>"}' \
+  | sed -E 's/.*"accessToken":"([^"]+)".*/\1/')
 
 curl -i -X POST http://localhost:8080/api/v1/requests \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-1' \
   -d '{"title":"New laptop","category":"Purchase","amount":1450}'
 ```
 
+<details>
+<summary>Windows PowerShell</summary>
+
+```powershell
+$token = (Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/v1/auth/token -ContentType 'application/json' `
+  -Body '{"email":"employee1@opsflow.local","password":"<SEED_DEMO_PASSWORD>"}').accessToken
+Invoke-WebRequest -Method Post -Uri http://localhost:8080/api/v1/requests -ContentType 'application/json' `
+  -Headers @{ Authorization = "Bearer $token"; 'Idempotency-Key' = 'demo-1' } `
+  -Body '{"title":"New laptop","category":"Purchase","amount":1450}'
+```
+</details>
+
+Response, captured from a fresh clone of this repository:
+
 ```http
 HTTP/1.1 201 Created
+ETag: "AAAAAAAAB9w="
 Location: /api/v1/requests/8
-ETag: "AAAAAAAAB9Y="
-X-Correlation-Id: 6f1c…
 
-{ "id": 8, "reference": "REQ-000008", "title": "New laptop", "category": "Purchase", "amount": 1450.0,
-  "status": "Draft", "requester": { "id": 7, "displayName": "Ana Santos" }, "currentRound": 0, "steps": [], … }
+{"id":8,"reference":"REQ-000008","title":"New laptop","description":null,"category":"Purchase","amount":1450.00,
+ "status":"Draft","requester":{"id":7,"displayName":"Ana Santos"},"currentRound":0,
+ "createdAt":"2026-10-10T17:59:12.323+00:00","updatedAt":"2026-10-10T17:59:12.323+00:00",
+ "submittedAt":null,"completedAt":null,"steps":[]}
 ```
+
+Sign-in is limited to 5 attempts per minute per IP, and to 10 failed attempts per account per 15 minutes. If
+you get `429` while trying the demo users, wait a minute.
 
 Errors share one shape and carry a stable `code` for clients to branch on:
 
@@ -143,7 +162,7 @@ Errors share one shape and carry a stable `code` for clients to branch on:
 { "title": "Precondition required", "status": 428,
   "detail": "Send the request's current ETag in the If-Match header.",
   "instance": "/api/v1/requests/8/submit", "code": "concurrency.if_match_required",
-  "correlationId": "a428cff3d4147cff0b366697bba79849" }
+  "correlationId": "216650128e56817909417d432f79a21c" }
 ```
 
 ## Run from source
