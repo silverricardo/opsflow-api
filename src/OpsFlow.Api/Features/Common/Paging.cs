@@ -8,6 +8,9 @@ public sealed record PageQuery(int? Page, int? PageSize)
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
 
+    /// <summary>Upper bound for <see cref="Page"/>, so the offset can never overflow.</summary>
+    public const int MaxPage = 100_000;
+
     public int PageNumber => Page ?? 1;
 
     public int Size => PageSize ?? DefaultPageSize;
@@ -19,7 +22,7 @@ public sealed class PageQueryValidator : AbstractValidator<PageQuery>
 {
     public PageQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Page).InclusiveBetween(1, PageQuery.MaxPage);
         RuleFor(x => x.PageSize).InclusiveBetween(1, PageQuery.MaxPageSize);
     }
 }

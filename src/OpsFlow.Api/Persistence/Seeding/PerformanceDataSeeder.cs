@@ -64,7 +64,7 @@ public sealed partial class PerformanceDataSeeder(
                 var plan = PlanFor(random.Next(100));
                 if (plan != Plan.Draft)
                 {
-                    Apply(request.Submit(Actor(org.Employee), org.Manager.Id, policy, createdAt.AddMinutes(5)));
+                    Apply(request.Submit(Actor(org.Employee), Actor(org.Manager), policy, users.Approvers, createdAt.AddMinutes(5)));
                 }
 
                 db.Requests.Add(request);
@@ -202,7 +202,10 @@ public sealed partial class PerformanceDataSeeder(
 
     private sealed record Org(User Employee, User Manager);
 
-    private sealed record Users(List<Org> Employees, List<User> Finance, List<User> Directors);
+    private sealed record Users(List<Org> Employees, List<User> Finance, List<User> Directors)
+    {
+        public IReadOnlyCollection<Actor> Approvers { get; } = [.. Finance.Concat(Directors).Select(Actor)];
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Database already contains users; performance seeding skipped.")]
     private static partial void LogSkipped(ILogger logger);

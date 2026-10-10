@@ -1,10 +1,15 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace OpsFlow.Api.Tests.Integration;
 
 /// <summary>Hosts the real API in-process against the test SQL Server, with optional setting overrides.</summary>
-internal sealed class OpsFlowApiFactory(string connectionString, IReadOnlyDictionary<string, string?>? overrides = null)
+internal sealed class OpsFlowApiFactory(
+    string connectionString,
+    IReadOnlyDictionary<string, string?>? overrides = null,
+    Action<IServiceCollection>? configureServices = null)
     : WebApplicationFactory<Program>
 {
     /// <summary>Test-only key. Not a secret: it signs tokens that are only valid against this test host.</summary>
@@ -34,6 +39,11 @@ internal sealed class OpsFlowApiFactory(string connectionString, IReadOnlyDictio
         foreach (var (key, value) in settings)
         {
             builder.UseSetting(key, value);
+        }
+
+        if (configureServices is not null)
+        {
+            builder.ConfigureTestServices(configureServices);
         }
     }
 }

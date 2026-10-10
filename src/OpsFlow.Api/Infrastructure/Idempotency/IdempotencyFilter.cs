@@ -69,7 +69,7 @@ public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeP
         }
         catch
         {
-            await ReleaseAsync(userId, key);
+            await ReleaseUnlessCommittedAsync(http, userId, key);
             throw;
         }
 
@@ -86,7 +86,7 @@ public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeP
             catch
             {
                 http.Response.Body = originalBody;
-                await ReleaseAsync(userId, key);
+                await ReleaseUnlessCommittedAsync(http, userId, key);
                 throw;
             }
 
@@ -96,7 +96,7 @@ public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeP
 
         if (http.Response.StatusCode >= StatusCodes.Status500InternalServerError)
         {
-            await ReleaseAsync(userId, key);
+            await ReleaseUnlessCommittedAsync(http, userId, key);
         }
         else
         {
@@ -162,6 +162,21 @@ public sealed partial class IdempotencyFilter(IServiceScopeFactory scopes, TimeP
 
         // Not tied to the request's cancellation: the command already happened and must be recorded.
         await db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A failure before the command committed releases the key so the client can retry. A failure after
+    /// the commit (e.g. while building the response) keeps it "in progress" until it expires: the retry
+    /// gets 409 instead of executing the command a second time.
+    /// </summary>
+    private async Task ReleaseUnlessCommittedAsync(HttpContext http, int userId, string key)
+    {
+        if (http.RequestServices.GetService<OpsFlowDbContext>() is { HasCommittedChanges: true })
+        {
+            return;
+        }
+
+        await ReleaseAsync(userId, key);
     }
 
     private async Task ReleaseAsync(int userId, string key)

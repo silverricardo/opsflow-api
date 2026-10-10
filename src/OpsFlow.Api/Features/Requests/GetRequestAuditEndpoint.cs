@@ -70,7 +70,7 @@ public static class GetRequestAuditEndpoint
                 r.Actor,
                 r.FromStatus,
                 r.ToStatus,
-                r.Details is null ? null : JsonDocument.Parse(r.Details).RootElement.Clone(),
+                r.Details is null ? null : JsonElement.Parse(r.Details),
                 r.CorrelationId))
             .ToList();
 

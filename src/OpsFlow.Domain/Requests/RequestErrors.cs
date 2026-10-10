@@ -12,7 +12,12 @@ public static class RequestErrors
 
     public static readonly DomainError RequesterHasNoManager = new(
         "request.requester_has_no_manager",
-        "The requester has no manager, so the approval chain cannot be created.",
+        "The requester has no active manager with an approver role, so the approval chain cannot be created.",
+        ErrorType.Unprocessable);
+
+    public static DomainError NoEligibleApprover(StepKind kind) => new(
+        "request.no_eligible_approver",
+        $"No active user other than the requester and their manager can decide the {kind} step, so the request could never be approved.",
         ErrorType.Unprocessable);
 
     public static readonly DomainError FulfilNotAllowed = new(

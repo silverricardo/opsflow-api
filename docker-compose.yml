@@ -9,7 +9,7 @@ services:
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
-      - "1433:1433"
+      - "127.0.0.1:1433:1433" # local only: never expose sa beyond this machine
     volumes:
       - sqlserver-data:/var/opt/mssql
     healthcheck:
@@ -32,7 +32,7 @@ services:
       # Telemetry is exported only when this is set, e.g. to the dashboard below (see docs/operations.md).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
   # Optional: traces and metrics UI. Start with
   #   OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889 docker compose --profile observability up -d
@@ -42,7 +42,7 @@ services:
     environment:
       ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true" # local only
     ports:
-      - "18888:18888"
+      - "127.0.0.1:18888:18888"
 
 volumes:
   sqlserver-data:

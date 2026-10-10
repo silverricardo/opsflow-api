@@ -3,7 +3,6 @@ using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpsFlow.Api.Infrastructure.Auth;
-using OpsFlow.Api.Infrastructure.Errors;
 using OpsFlow.Api.Infrastructure.Http;
 using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Observability;
@@ -33,6 +32,7 @@ public static class DecideStepEndpoint
     public static RouteHandlerBuilder MapDecideStep(this IEndpointRouteBuilder routes) =>
         routes.MapPost("/{id:long}/steps/{stepId:long}/decision", DecideAsync)
             .WithIdempotency()
+            .RequireAuthorization(Policies.Approver)
             .WithValidation<DecisionBody>()
             .WithName("DecideStep")
             .WithSummary("Approve, reject or request changes on the current approval step. Requires If-Match.");
@@ -50,25 +50,15 @@ public static class DecideStepEndpoint
         CancellationToken cancellationToken)
     {
         var actor = principal.ToActor();
-        var (request, problem) = await db.LoadForCommandAsync(id, actor, ifMatch, withCurrentRoundSteps: true, cancellationToken);
-        if (request is null)
+        var outcome = await db.ExecuteAsync(id, actor, ifMatch, withCurrentRoundSteps: true, request =>
+            Task.FromResult(request.Decide(stepId, actor, body.Decision!.Value, body.Comment, clock.GetUtcNow())),
+            response, cancellationToken);
+
+        if (outcome.Result is Ok<RequestDetailsResponse>)
         {
-            return problem!;
+            metrics.DecisionRecorded(body.Decision!.Value);
         }
 
-        var decided = request.Decide(stepId, actor, body.Decision!.Value, body.Comment, clock.GetUtcNow());
-        if (!decided.IsSuccess)
-        {
-            return decided.Error.ToProblem();
-        }
-
-        if (await db.SaveAggregateAsync(cancellationToken) is { } conflict)
-        {
-            return conflict;
-        }
-
-        metrics.DecisionRecorded(body.Decision.Value);
-
-        return await db.DetailsAfterChangeAsync(id, actor, response, cancellationToken);
+        return outcome;
     }
 }

@@ -30,6 +30,7 @@ public sealed class DemoDataSeeder(
 
         // Users are saved level by level because each level references its manager's generated ID.
         var director = await AddUserAsync("director", "Morgan Silva", UserRole.Director, null);
+        var director2 = await AddUserAsync("director2", "Sofia Ramos", UserRole.Director, null);
         await AddUserAsync("admin", "Alex Admin", UserRole.Admin, null);
         var manager1 = await AddUserAsync("manager1", "Rita Costa", UserRole.Manager, director.Id);
         var manager2 = await AddUserAsync("manager2", "Tiago Almeida", UserRole.Manager, director.Id);
@@ -40,6 +41,7 @@ public sealed class DemoDataSeeder(
         await AddUserAsync("employee4", "Diogo Rocha", UserRole.Employee, manager2.Id);
 
         var finance = await db.Users.SingleAsync(u => u.Role == UserRole.Finance, cancellationToken);
+        List<Actor> approvers = [Actor(finance), Actor(director), Actor(director2)];
         var policy = new ApprovalPolicy(await db.ApprovalPolicyRules.AsNoTracking().ToListAsync(cancellationToken));
 
         // One request per interesting state (Approved is shown by fulfilling one), so every screen of a demo has data.
@@ -60,7 +62,7 @@ public sealed class DemoDataSeeder(
         Apply(toner.Cancel(Actor(employee3), now));
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Demo data seeded: 9 users, 7 requests in six statuses.");
+        logger.LogInformation("Demo data seeded: 10 users, 7 requests in six statuses.");
 
         static Actor Actor(User user) => new(user.Id, user.Role);
 
@@ -89,7 +91,7 @@ public sealed class DemoDataSeeder(
             var request = Request.Create(Actor(requester), title, description: null, category, amount, now).Value;
             if (submit)
             {
-                Apply(request.Submit(Actor(requester), manager.Id, policy, now));
+                Apply(request.Submit(Actor(requester), Actor(manager), policy, approvers, now));
             }
 
             db.Requests.Add(request);

@@ -44,7 +44,7 @@ public sealed class ListRequestsQueryValidator : AbstractValidator<ListRequestsQ
 {
     public ListRequestsQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Page).InclusiveBetween(1, PageQuery.MaxPage);
         RuleFor(x => x.PageSize).InclusiveBetween(1, PageQuery.MaxPageSize);
         RuleFor(x => x.Sort)
             .Must(RequestSorting.IsSupported)
@@ -55,6 +55,7 @@ public sealed class ListRequestsQueryValidator : AbstractValidator<ListRequestsQ
         RuleFor(x => x.MaxAmount)
             .GreaterThanOrEqualTo(x => x.MinAmount ?? 0)
             .WithMessage("maxAmount must be greater than or equal to minAmount.");
+        RuleFor(x => x.CreatedTo).LessThan(DateOnly.MaxValue);
         RuleFor(x => x.CreatedTo)
             .GreaterThanOrEqualTo(x => x.CreatedFrom)
             .When(x => x.CreatedFrom is not null && x.CreatedTo is not null)

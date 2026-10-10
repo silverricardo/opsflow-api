@@ -40,7 +40,8 @@ public static class CreateRequestEndpoint
         await db.SaveChangesAsync(cancellationToken);
         metrics.RequestCreated(created.Value.Category);
 
-        var details = await db.GetDetailsAsync(created.Value.Id, actor, cancellationToken)
+        // Committed: finish without the request's token (see RequestCommands.ExecuteAsync).
+        var details = await db.GetDetailsAsync(created.Value.Id, actor, CancellationToken.None)
             ?? throw new InvalidOperationException("A newly created request must be visible to its requester.");
 
         response.SetETag(details.RowVersion);

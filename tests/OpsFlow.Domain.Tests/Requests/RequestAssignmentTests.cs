@@ -8,7 +8,6 @@ namespace OpsFlow.Domain.Tests.Requests;
 [TestFixture]
 public class RequestAssignmentTests
 {
-    private static readonly Actor Director2 = new(31, UserRole.Director);
     private static readonly Actor Finance3 = new(22, UserRole.Finance);
 
     [Test]
@@ -50,7 +49,7 @@ public class RequestAssignmentTests
     [Test]
     public void Claim_OwnRequest_IsSelfApproval()
     {
-        var request = SubmittedRequest(7_000m, requester: Finance1, managerId: Director.UserId);
+        var request = SubmittedRequest(7_000m, requester: Finance1, manager: Director);
 
         Assert.That(request.ClaimStep(request.Step(StepKind.Finance).Id, Finance1, Now).Error, Is.EqualTo(ApprovalErrors.SelfApproval));
     }
@@ -58,7 +57,7 @@ public class RequestAssignmentTests
     [Test]
     public void Claim_ByUserWhoAlreadyDecidedThisRound_IsDuplicateApprover()
     {
-        var request = SubmittedRequest(60_000m, requester: Manager, managerId: Director.UserId);
+        var request = SubmittedRequest(60_000m, requester: Manager, manager: Director);
         request.Decide(request.Step(StepKind.Manager).Id, Director, Decision.Approve, null, Now);
 
         Assert.That(request.ClaimStep(request.Step(StepKind.Director).Id, Director, Now).Error, Is.EqualTo(ApprovalErrors.DuplicateApprover));

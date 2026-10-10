@@ -13,22 +13,23 @@ public class AuthorizationMatrixTests : IntegrationTestBase
 {
     private const string Missing = "/api/v1/requests/999999";
 
-    private static readonly (string Method, string Path, object? Body, UserRole[] Allowed)[] Endpoints =
+    // Allowed roles must get exactly the expected status (not merely "not 401/403", which a 500 would pass).
+    private static readonly (string Method, string Path, object? Body, UserRole[] Allowed, HttpStatusCode Expected)[] Endpoints =
     [
-        ("GET", "/api/v1/me", null, AllRoles()),
-        ("GET", "/api/v1/requests", null, AllRoles()),
-        ("POST", "/api/v1/requests", new { }, AllRoles()), // Admin passes the policy; the domain rejects it (covered elsewhere)
-        ("GET", Missing, null, AllRoles()),
-        ("PUT", Missing, new { title = "Valid", category = "Purchase", amount = 1 }, AllRoles()),
-        ("POST", $"{Missing}/submit", null, AllRoles()),
-        ("POST", $"{Missing}/cancel", null, AllRoles()),
-        ("POST", $"{Missing}/steps/1/decision", new { decision = "Approve" }, AllRoles()),
-        ("GET", $"{Missing}/audit", null, AllRoles()),
-        ("POST", $"{Missing}/steps/1/claim", null, [UserRole.Manager, UserRole.Finance, UserRole.Director]),
-        ("PUT", $"{Missing}/steps/1/assignee", new { userId = 1 }, [UserRole.Admin]),
-        ("POST", $"{Missing}/fulfil", null, [UserRole.Finance]),
-        ("GET", "/api/v1/approvals/inbox", null, [UserRole.Manager, UserRole.Finance, UserRole.Director]),
-        ("GET", "/api/v1/users", null, [UserRole.Admin]),
+        ("GET", "/api/v1/me", null, AllRoles(), HttpStatusCode.OK),
+        ("GET", "/api/v1/requests", null, AllRoles(), HttpStatusCode.OK),
+        ("POST", "/api/v1/requests", new { }, AllRoles(), HttpStatusCode.BadRequest), // Admin passes the policy; the domain rejects Admin (covered elsewhere)
+        ("GET", Missing, null, AllRoles(), HttpStatusCode.NotFound),
+        ("PUT", Missing, new { title = "Valid", category = "Purchase", amount = 1 }, AllRoles(), HttpStatusCode.NotFound),
+        ("POST", $"{Missing}/submit", null, AllRoles(), HttpStatusCode.NotFound),
+        ("POST", $"{Missing}/cancel", null, AllRoles(), HttpStatusCode.NotFound),
+        ("GET", $"{Missing}/audit", null, AllRoles(), HttpStatusCode.NotFound),
+        ("POST", $"{Missing}/steps/1/decision", new { decision = "Approve" }, Approvers(), HttpStatusCode.NotFound),
+        ("POST", $"{Missing}/steps/1/claim", null, Approvers(), HttpStatusCode.NotFound),
+        ("PUT", $"{Missing}/steps/1/assignee", new { userId = 1 }, [UserRole.Admin], HttpStatusCode.NotFound),
+        ("POST", $"{Missing}/fulfil", null, [UserRole.Finance], HttpStatusCode.NotFound),
+        ("GET", "/api/v1/approvals/inbox", null, Approvers(), HttpStatusCode.OK),
+        ("GET", "/api/v1/users", null, [UserRole.Admin], HttpStatusCode.OK),
     ];
 
     private static readonly Dictionary<UserRole, TestUser> UserForRole = new()
@@ -44,24 +45,20 @@ public class AuthorizationMatrixTests : IntegrationTestBase
         from endpoint in Endpoints
         from role in Enum.GetValues<UserRole>()
         let allowed = endpoint.Allowed.Contains(role)
-        select new TestCaseData(endpoint.Method, endpoint.Path, endpoint.Body, role, allowed)
-            .SetName($"{endpoint.Method} {endpoint.Path.Replace("999999", "{id}", StringComparison.Ordinal)} as {role} → {(allowed ? "allowed" : "403")}");
+        let expected = allowed ? endpoint.Expected : HttpStatusCode.Forbidden
+        select new TestCaseData(endpoint.Method, endpoint.Path, endpoint.Body, role, expected)
+            .SetName($"{endpoint.Method} {endpoint.Path.Replace("999999", "{id}", StringComparison.Ordinal)} as {role} → {(int)expected}");
 
     [TestCaseSource(nameof(Matrix))]
-    public async Task Endpoint_EnforcesRolePolicy(string method, string path, object? body, UserRole role, bool allowed)
+    public async Task Endpoint_EnforcesRolePolicy(string method, string path, object? body, UserRole role, HttpStatusCode expected)
     {
         using var client = ClientFor(UserForRole[role]);
 
         using var response = await SendCommandAsync(client, new HttpMethod(method), path, etag: "\"AAAAAAAAAAA=\"", body: body);
 
-        if (allowed)
+        Assert.That(response.StatusCode, Is.EqualTo(expected), await response.Content.ReadAsStringAsync());
+        if (expected == HttpStatusCode.Forbidden)
         {
-            Assert.That(response.StatusCode, Is.Not.EqualTo(HttpStatusCode.Forbidden).And.Not.EqualTo(HttpStatusCode.Unauthorized),
-                await response.Content.ReadAsStringAsync());
-        }
-        else
-        {
-            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
             Assert.That((await ReadProblemAsync(response)).Code, Is.EqualTo("auth.forbidden"));
         }
     }
@@ -80,4 +77,6 @@ public class AuthorizationMatrixTests : IntegrationTestBase
         Endpoints.Select(e => new TestCaseData(e.Method, e.Path).SetName($"{e.Method} {e.Path.Replace("999999", "{id}", StringComparison.Ordinal)} anonymous → 401"));
 
     private static UserRole[] AllRoles() => Enum.GetValues<UserRole>();
+
+    private static UserRole[] Approvers() => [UserRole.Manager, UserRole.Finance, UserRole.Director];
 }

@@ -53,7 +53,7 @@ at the same time. Last-write-wins would silently lose decisions.
 touches the root. Clients must send `If-Match`: a missing header → `428`, a mismatch → `412`.
 
 **Consequences.** No locks held across requests, and conflicts are explicit and recoverable (re-read, retry).
-Clients have to handle ETags. That's standard HTTP, and the `.http` samples show how.
+Clients have to handle ETags. That's standard HTTP, and the samples in `http/opsflow.http` show how.
 
 ## ADR-005 — Idempotency keys stored in SQL Server
 
@@ -66,7 +66,8 @@ runs, in its own transaction.
 
 **Consequences.** No extra infrastructure (Redis) is needed. Because the reservation and the command are
 separate transactions, a crash between them leaves a key "in progress" until it expires (24 hours). The client
-gets `409` and can use a new key, which is an accepted trade-off. For approve/reject, `If-Match` already prevents
+gets `409` and can use a new key, which is an accepted trade-off. The key is only released when the command
+did **not** commit. A failure after the commit keeps the key, so a retry can never execute the command twice. For approve/reject, `If-Match` already prevents
 double application, so idempotency there mainly gives retried calls a friendly replayed response.
 
 ## ADR-006 — Self-issued JWT for the demo; external identity provider for production

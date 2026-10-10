@@ -167,4 +167,38 @@ public class SubmitRequestTests : IntegrationTestBase
             }
         }
     }
+
+    // BR-12: an inactive manager counts as no manager.
+    [Test]
+    public async Task Submit_WhenManagerIsInactive_Returns422()
+    {
+        var (created, etag) = await CreateRequestAsync(OrphanedEmployee);
+        using var client = ClientFor(OrphanedEmployee);
+
+        using var response = await SubmitAsync(client, created.Id, etag);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
+        Assert.That((await ReadProblemAsync(response)).Code, Is.EqualTo("request.requester_has_no_manager"));
+    }
+
+    // BR-13a: Manager1's manager is the Director; without a second active Director the chain could never finish.
+    [Test]
+    public async Task Submit_WhenNoOneCouldDecideALaterStep_Returns422InsteadOfGettingStuck()
+    {
+        var (created, etag) = await CreateRequestAsync(Manager1, 60_000m);
+        await QueryDbAsync(db => db.Database.ExecuteSqlAsync($"UPDATE [Users] SET [IsActive] = 0 WHERE [Id] = {Director2.Id}"));
+        try
+        {
+            using var client = ClientFor(Manager1);
+
+            using var response = await SubmitAsync(client, created.Id, etag);
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
+            Assert.That((await ReadProblemAsync(response)).Code, Is.EqualTo("request.no_eligible_approver"));
+        }
+        finally
+        {
+            await QueryDbAsync(db => db.Database.ExecuteSqlAsync($"UPDATE [Users] SET [IsActive] = 1 WHERE [Id] = {Director2.Id}"));
+        }
+    }
 }

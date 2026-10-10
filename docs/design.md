@@ -111,7 +111,7 @@ erDiagram
         varchar(32) Role
         int ManagerId FK "nullable"
         bit IsActive
-        datetime2 CreatedAt
+        datetimeoffset CreatedAt
     }
     Requests {
         bigint Id PK
@@ -123,10 +123,10 @@ erDiagram
         varchar(32) Status
         int RequesterId FK
         int CurrentRound "0 until submitted"
-        datetime2 CreatedAt
-        datetime2 UpdatedAt
-        datetime2 SubmittedAt "nullable"
-        datetime2 CompletedAt "nullable"
+        datetimeoffset CreatedAt
+        datetimeoffset UpdatedAt
+        datetimeoffset SubmittedAt "nullable"
+        datetimeoffset CompletedAt "nullable"
         rowversion RowVersion "concurrency token"
     }
     ApprovalSteps {
@@ -138,7 +138,7 @@ erDiagram
         varchar(32) Status
         int AssigneeId FK "nullable"
         int DecidedById FK "nullable"
-        datetime2 DecidedAt "nullable"
+        datetimeoffset DecidedAt "nullable"
         nvarchar(1000) Comment "nullable"
     }
     ApprovalPolicyRules {
@@ -156,7 +156,7 @@ erDiagram
         varchar(32) ToStatus "nullable"
         nvarchar(max) Details "JSON, nullable"
         varchar(64) CorrelationId
-        datetime2 OccurredAt
+        datetimeoffset OccurredAt
     }
     IdempotencyRecords {
         int UserId PK
@@ -168,8 +168,8 @@ erDiagram
         varchar(100) ResponseContentType "nullable"
         varchar(100) ResponseETag "nullable"
         varchar(300) ResponseLocation "nullable"
-        datetime2 CreatedAt
-        datetime2 ExpiresAt
+        datetimeoffset CreatedAt
+        datetimeoffset ExpiresAt
     }
 ```
 
@@ -214,8 +214,8 @@ Validated with 100k requests under load (perf/README.md). The visibility query h
 | `POST /requests/{id}/submit` | requester | `200` + `ETag` | `If-Match`; Idempotency-Key |
 | `POST /requests/{id}/cancel` | requester | `200` + `ETag` | `If-Match`; Idempotency-Key |
 | `POST /requests/{id}/fulfil` | Finance | `200` + `ETag` | `If-Match`; Idempotency-Key |
-| `POST /requests/{id}/steps/{stepId}/decision` | eligible | `200` + `ETag` | Body `{ "decision": "Approve" \| "Reject" \| "RequestChanges", "comment": "…" }`; `If-Match`; Idempotency-Key |
-| `POST /requests/{id}/steps/{stepId}/claim` | eligible | `200` + `ETag` | `If-Match` |
+| `POST /requests/{id}/steps/{stepId}/decision` | Manager, Finance, Director | `200` + `ETag` | Body `{ "decision": "Approve" \| "Reject" \| "RequestChanges", "comment": "…" }`; `If-Match`; Idempotency-Key |
+| `POST /requests/{id}/steps/{stepId}/claim` | Manager, Finance, Director | `200` + `ETag` | `If-Match`; Idempotency-Key |
 | `PUT /requests/{id}/steps/{stepId}/assignee` | Admin | `200` + `ETag` | Body `{ userId }`; `If-Match` |
 | `GET /requests/{id}/audit` | visible | `200` paged | Oldest first |
 | `GET /approvals/inbox` | Manager, Finance, Director | `200` paged | Current, decidable steps |
@@ -266,7 +266,7 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 
 | Status | `code` values |
 |---|---|
-| 400 | `validation.failed` (with `errors` map, including query parameters), `request.malformed` (bad JSON, unknown property, wrong type), `idempotency.invalid_key`, `step.comment_required`, `step.comment_too_long` |
+| 400 | `validation.failed` (with `errors` map, including query parameters and a missing decision comment), `request.malformed` (bad JSON, unknown property, wrong type), `idempotency.invalid_key`. The domain also enforces `step.comment_required` / `step.comment_too_long` as defence in depth. Over HTTP the validator answers first |
 | 401 | `auth.invalid_credentials`, `auth.unauthenticated` |
 | 403 | `auth.forbidden`, `request.admin_cannot_create`, `approval.self_approval`, `approval.duplicate_approver`, `step.not_assignee`, `step.not_eligible`, `step.reassign_not_allowed`, `request.not_owner`, `request.fulfil_not_allowed`, `request.self_fulfilment` |
 | 404 | `request.not_found`, `step.not_found`, `user.not_found`, `resource.not_found` (unknown route) |
@@ -289,6 +289,10 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
   if the key is missing or short. It is never committed: dev uses user secrets or `.env`, Azure uses Key Vault.
 - Login errors are identical for an unknown email and a wrong password. Unknown emails still pay the
   hashing cost, so response time doesn't reveal which emails exist.
+- Brute force is limited twice: 5 attempts per minute per client IP (rate limiter), and 10 failed attempts per
+  account per 15 minutes, whatever the IP (`SignInThrottle`). The account limit applies to unknown e-mails too,
+  so it reveals nothing. Trade-offs: it is per instance (distributed cache when scaling out), and it allows a
+  temporary, self-expiring lockout of a known e-mail.
 - Inactive users cannot get tokens. Existing tokens expire within 15 minutes, and that delay is
   documented as a trade-off.
 - Production path (ADR-006): swap the local issuer for Microsoft Entra ID or another OIDC provider. Only
@@ -296,7 +300,8 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 
 **Authorization** works in three layers, each tested:
 
-1. **Endpoint policies**: role-based (`RequireRole`), e.g. `AdminOnly`, `CanDecide`, `CanFulfil`.
+1. **Endpoint policies**: role-based. `AdminOnly` (reassign, users), `FinanceOnly` (fulfil), `Approver`
+   (Manager/Finance/Director: decide, claim, inbox). Every other endpoint requires an authenticated user (fallback policy).
 2. **Resource visibility**: list and detail queries are filtered by BR-40/41 *in SQL*, never after
    loading. A request the caller can't see returns `404`.
 3. **Domain rules**: ownership, segregation of duties and assignee checks live in the aggregate.
@@ -304,7 +309,9 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 
 **Hardening**
 
-- HTTPS redirection and HSTS outside Development. Security headers: `X-Content-Type-Options`,
+- TLS is terminated by the platform ingress, and the container listens on HTTP 8080 (see deployment guide).
+  HSTS is sent outside Development. There is no in-app HTTPS redirection, because behind a TLS-terminating
+  proxy it would loop. Security headers: `X-Content-Type-Options`,
   `Referrer-Policy`, and `Cache-Control: no-store` on authenticated responses.
 - Rate limiting: a fixed window of 5 req/min per IP on `/auth/token`, and a token bucket per user (or IP when
   anonymous) globally.
@@ -334,7 +341,11 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
   1. Look up (`UserId`, `Key`). If found with the same hash and completed → replay the stored status, body and headers.
      If found with a different hash → `422`. If found but not completed → `409 idempotency.in_progress`.
   2. Otherwise insert an in-progress record (the unique PK settles concurrent duplicates), then run the handler.
-  3. Store the response on success. On a `5xx`, delete the record so the client can retry.
+  3. Store the response on success. On a failure **before the command committed** (exception or `5xx`),
+     delete the record so the client can retry. On a failure **after** it committed (e.g. while building the
+     response), keep the record "in progress": a retry gets `409` until it expires, never a second execution.
+     The request-scoped `DbContext` reports whether it committed. Found in the Phase 7 review and covered by
+     a fault-injection test.
      Responses in the `4xx` range are stored, because retrying an identical invalid command should give the same answer.
   4. Records expire after 24 hours. A background cleanup runs hourly.
   5. Replayed responses are byte-for-byte identical (body stored as `varbinary`, plus status, content type,
@@ -350,16 +361,19 @@ Clients branch on `code`, not on `title` or `type`. `type` is left at the framew
 - Command handlers load the aggregate with its *current round* steps in one query
   (filtered `Include`, `AsSplitQuery` not needed for one collection).
 - No lazy loading (the proxies package isn't referenced), so N+1 queries can't happen by accident.
-  An integration test asserts the number of SQL commands per list request.
+  Each list endpoint is a single projection query plus a `COUNT`, which the load test confirms
+  (perf/README.md, top statements).
 - `COUNT` and page queries share one filter expression. A large `totalCount` is an accepted cost at
   this scale, and keyset pagination is listed as future work (ADR-008).
 
 ## 8. Seed data
 
-- Runs only when `Seed__Enabled=true` **and** the environment is not `Production`.
-- Users: 1 Admin, 1 Director, 2 Managers (reporting to the Director), 1 Finance, 4 Employees
+- Runs only when `Seed__Enabled=true` **and** the environment is on the allow-list (`Development`, `Testing`,
+  `Performance`). Anything else, including `Staging`, is refused.
+- Users: 1 Admin, 2 Directors, 2 Managers (reporting to the first Director), 1 Finance, 4 Employees
   (2 per Manager). All share a demo password from configuration (`Seed__DemoPassword`), and there is no
   hard-coded default. `.env.example` contains an obviously local-only placeholder.
-- Includes the approval policy rules and ~15 requests across every status, created **through domain
-  methods** so the seed data is always valid.
+- Includes 7 requests in six statuses (Draft, InApproval, ChangesRequested, Rejected, Cancelled, Fulfilled),
+  created **through domain methods** so the seed data is always valid. The approval policy rules ship
+  with the migrations.
 - A separate `perf` seeding mode, used in Phase 6, generates ~100k requests for load testing.

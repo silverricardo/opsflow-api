@@ -40,7 +40,7 @@ public class RequestLifecycleTests
         var result = operation switch
         {
             Operation.Update => request.Update(Employee, "Edited title", null, RequestCategory.Purchase, 10m, Now),
-            Operation.Submit => request.Submit(Employee, ManagerId, DefaultPolicy(), Now),
+            Operation.Submit => request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now),
             Operation.Cancel => request.Cancel(Employee, Now),
             Operation.Fulfil => request.Fulfil(Finance1, Now),
             _ => throw new ArgumentOutOfRangeException(nameof(operation)),
