@@ -41,6 +41,11 @@ internal sealed class RequestConfiguration : IEntityTypeConfiguration<Request>
             .IncludeProperties(r => new { r.Reference, r.Title, r.Category, r.Amount, r.UpdatedAt })
             .HasDatabaseName("IX_Requests_RequesterId_Status_CreatedAt");
 
+        // Unfiltered lists sorted by date or amount (Finance/Director/Admin): TOP N by an index seek
+        // instead of sorting every request (~390 ms CPU per page at 100k requests before).
+        builder.HasIndex(r => new { r.CreatedAt, r.Id }, "IX_Requests_CreatedAt").IsDescending(true, true);
+        builder.HasIndex(r => new { r.Amount, r.Id }, "IX_Requests_Amount").IsDescending(true, true);
+
         // Finance / Director / Admin lists filtered by status.
         builder.HasIndex(r => new { r.Status, r.CreatedAt })
             .IsDescending(false, true)
