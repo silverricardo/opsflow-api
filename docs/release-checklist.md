@@ -24,7 +24,8 @@
 - [ ] **Windows.** The PowerShell commands in the README have not been run on Windows. The Docker path is
       platform-independent.
 - [ ] **Azure deployment.** The guide documents a path. It has not been executed.
-- [ ] **Performance on standardised hardware.** Run the *Performance baseline* workflow once it is on `main`.
+- [x] **Performance on standardised hardware:** measured on a GitHub-hosted runner on 2026-10-12. Results are in
+      perf/README.md.
 
 ## Steps to publish (repository owner)
 

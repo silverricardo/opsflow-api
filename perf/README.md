@@ -47,6 +47,33 @@ environment and database statistics are uploaded as the `perf-results` artifact.
 Results are published here **only after a run**, with the environment they were measured on. Numbers from
 different environments are not comparable.
 
+### GitHub-hosted runner, 2026-10-12 (reference baseline)
+
+**Environment (recorded by the workflow):** GitHub Actions `ubuntu-24.04` runner, AMD EPYC 7763 with 4 vCPUs, 15 GB
+RAM, Docker 28.0.4. API, SQL Server 2022 and k6 share the runner. Commit `1a7bebe`, which includes the visibility
+fix. Data: 100,000 requests (seed finished in 373 s). 20 VUs measured for 2 min after a 30 s warm-up.
+[Workflow run](https://github.com/silverricardo/opsflow-api/actions/runs/38303182577).
+
+| Operation | p95 | Median | Target (p95 < 200 ms) |
+|---|---|---|---|
+| `get` (request details) | **26 ms** | 11 ms | ✓ |
+| `decide` | **147 ms** | 66 ms | ✓ |
+| `submit` | **196 ms** | 78 ms | ✓ (just) |
+| `create` | 281 ms | 133 ms | ✗ |
+| `list_all` (Finance, 100k visible) | 745 ms | 413 ms | ✗ |
+| `inbox` | 1.33 s | 826 ms | ✗ |
+| `list_mine` (employee list) | 1.92 s | 351 ms | ✗ |
+| **Throughput** | 25.8 req/s (15.8 iterations/s, bounded by the 0.25–0.75 s think time) | | |
+| Errors | 0.88% in the measured phase | | < 1% ✓ |
+
+All checks passed (3,219 of 3,219). As in the local runs, every "error" was a `409`/`412` from concurrent
+approvals of the same request, which is the correct outcome.
+
+**Reading it.** On adequate hardware, key lookups and every write except `create` meet the target. What remains above
+it are the read-heavy queries: inbox, then the lists. They rank in the same order as on the overloaded laptop, which
+confirms the remaining work is in those queries, not in the environment. The next steps below target exactly those.
+`create` is slower than the other writes because it re-reads the full request to build the response (next step 3).
+
 ### Local baseline, 2026-10-10: before and after the visibility fix
 
 **Environment (measured):** MacBook Pro, Intel Core i5-7267U (2 cores / 4 threads), 8 GB RAM. Docker Desktop

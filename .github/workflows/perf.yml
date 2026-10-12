@@ -94,7 +94,13 @@ jobs:
           {
             echo '## Performance baseline'
             echo '```'; cat perf/results/environment.txt; echo '```'
-            echo '```'; sed -n '/THRESHOLDS/,$p' perf/results/k6-output.txt | head -120; echo '```'
+            # k6 2.x prints no "THRESHOLDS" header: pick the result lines themselves (✓/✗ thresholds, checks, totals).
+            echo '```'
+            grep -E "phase:measure|checks\.|http_reqs\.|http_req_failed|http_req_duration\.|iterations\.|✓ [a-z]|✗ [a-z]|↳" perf/results/k6-output.txt \
+              | grep -vE "^(Run|warmup|measure) +\[" | sed -E 's/\.{3,}:/:/' || echo "(no k6 summary found: see the Run k6 step log)"
+            echo '```'
+            echo '### Database: top statements and index usage'
+            echo '```'; cut -c1-240 perf/results/top-queries.txt 2>/dev/null | head -40 || echo "(none)"; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -213,9 +213,15 @@ defeating every index. The fix was measured on the same data and machine:
 | Employee list p95 | 18.1 s | 4.0 s |
 | Throughput (20 VUs) | 5.7 req/s | 17.8 req/s |
 
-These numbers come from an overloaded 8 GB laptop, so the absolute latencies are pessimistic and several
-operations are still above the 200 ms p95 target. The perf README lists the remaining hotspots and next steps. A
-manual GitHub Actions workflow runs the same test on standardised hardware.
+Those before/after numbers come from an overloaded 8 GB laptop. The same test on a **GitHub-hosted runner** (4
+vCPUs, 15 GB, 100k requests, 20 VUs), via a manual workflow, gives these p95 values:
+
+| `get` | `decide` | `submit` | `create` | `list_all` | `inbox` | `list_mine` |
+|---|---|---|---|---|---|---|
+| 26 ms ✓ | 147 ms ✓ | 196 ms ✓ | 281 ms | 745 ms | 1.33 s | 1.92 s |
+
+Key lookups and most writes meet the 200 ms target. The read-heavy inbox and list queries do not yet. Their next
+optimisation steps are in the perf README.
 
 ## Documentation
 
@@ -247,8 +253,8 @@ manual GitHub Actions workflow runs the same test on standardised hardware.
 - Single currency (EUR) and single tenant. No notifications, attachments or delegation.
 - The demo identity provider has no MFA, password reset or token revocation (tokens last 15 minutes).
 - The per-account sign-in throttle is in memory and per instance.
-- Lists return an exact `totalCount` (offset pagination). Inbox and list queries are still above the latency target
-  in the local benchmark (see perf README).
+- Lists return an exact `totalCount` (offset pagination). Inbox and list queries are still above the 200 ms p95
+  target, even on the GitHub runner (see perf README).
 - A user loses sight of a request once their step is reassigned before they decide it (BR-40, by design).
 - One unexplained `500` appeared once during race testing. It was not reproduced in more than 1,600 further
   iterations, locally or in CI.
