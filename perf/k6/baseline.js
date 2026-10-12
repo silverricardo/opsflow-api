@@ -46,10 +46,23 @@ function login(email) {
   return res.json('accessToken');
 }
 
+// The API may still be starting (e.g. after a container restart): wait until it reports ready.
+function waitUntilReady(timeoutSeconds) {
+  for (let waited = 0; waited < timeoutSeconds; waited += 2) {
+    const res = http.get(`${BASE}/health/ready`, { tags: { op: 'readiness' } });
+    if (res.status === 200) {
+      return;
+    }
+    sleep(2);
+  }
+  throw new Error(`API not ready at ${BASE} after ${timeoutSeconds} s`);
+}
+
 export function setup() {
   if (!PASSWORD) {
     throw new Error('Set PERF_PASSWORD (the Seed:DemoPassword used for the performance seed).');
   }
+  waitUntilReady(120);
   const employees = [];
   for (let i = 1; i <= EMPLOYEES; i++) employees.push(login(`employee${i}@perf.local`));
   const managers = [];
