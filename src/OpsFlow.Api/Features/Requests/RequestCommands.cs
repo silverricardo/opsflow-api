@@ -43,7 +43,7 @@ internal static class RequestCommands
                 .LoadAsync(cancellationToken);
         }
 
-        var request = await db.Requests.VisibleTo(actor, db.Users).SingleOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+        var request = await db.Requests.VisibleTo(actor, db).SingleOrDefaultAsync(r => r.Id == requestId, cancellationToken);
         if (request is null)
         {
             return new LoadedRequest(null, Problems.RequestNotFound());

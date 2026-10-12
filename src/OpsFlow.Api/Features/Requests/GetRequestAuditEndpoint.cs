@@ -37,7 +37,7 @@ public static class GetRequestAuditEndpoint
         CancellationToken cancellationToken)
     {
         var actor = principal.ToActor();
-        if (!await db.Requests.VisibleTo(actor, db.Users).AnyAsync(r => r.Id == id, cancellationToken))
+        if (!await db.Requests.VisibleTo(actor, db).AnyAsync(r => r.Id == id, cancellationToken))
         {
             return Problems.RequestNotFound();
         }

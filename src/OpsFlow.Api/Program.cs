@@ -22,11 +22,13 @@ builder.Host.UseSerilog((context, services, logger) => logger
     .Enrich.FromLogContext());
 
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = 64 * 1024);
-builder.Services.AddOpsFlow();
+builder.Services.AddOpsFlow(builder.Configuration);
 
 var app = builder.Build();
 
-// Order matters: correlation first so that error handling and request logs carry the ID.
+// Order matters: forwarded headers first (client IP and scheme), then correlation so that error handling
+// and request logs carry the ID.
+app.UseOpsFlowForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();

@@ -10,12 +10,17 @@ namespace OpsFlow.Api.Persistence;
 /// </summary>
 public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<OpsFlowDbContext>
 {
+    /// <summary>Migrations (including the migration bundle) may build indexes on large tables.</summary>
+    public static readonly TimeSpan MigrationCommandTimeout = TimeSpan.FromMinutes(10);
+
     public OpsFlowDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__OpsFlow")
             ?? "Server=localhost,1433;Database=OpsFlow;TrustServerCertificate=True";
 
-        var options = new DbContextOptionsBuilder<OpsFlowDbContext>().UseSqlServer(connectionString).Options;
+        var options = new DbContextOptionsBuilder<OpsFlowDbContext>()
+            .UseSqlServer(connectionString, sql => sql.CommandTimeout((int)MigrationCommandTimeout.TotalSeconds))
+            .Options;
         return new OpsFlowDbContext(options, new CorrelationContext { CorrelationId = "design-time" });
     }
 }

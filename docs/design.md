@@ -192,12 +192,13 @@ All timestamps are stored as `datetimeoffset(3)` and written in UTC (`TimeProvid
 | `IX_Requests_Status_CreatedAt` (same includes) | Finance/Director/Admin lists filtered by status |
 | `IX_ApprovalSteps_AssigneeId_Pending` filtered `WHERE Status = 'Pending'` | Inbox: steps assigned to me |
 | `IX_ApprovalSteps_Kind_Pending_Unassigned` filtered `WHERE Status = 'Pending' AND AssigneeId IS NULL` | Inbox: role pool |
+| `IX_ApprovalSteps_AssigneeId`, `IX_ApprovalSteps_DecidedById` (incl. `RequestId`) | Visibility: requests I am or was assigned to or decided (added after the load test, see perf/README.md) |
 | `IX_AuditEntries_RequestId_OccurredAt` | Audit history for one request |
 | `IX_IdempotencyRecords_ExpiresAt` | Cleanup of expired keys |
 | `UQ_Users_Email` | Login |
 
-Phase 6 validates these against actual execution plans with 100k+ rows. Any index that isn't
-used gets removed.
+Validated with 100k requests under load (perf/README.md). The visibility query had to be rewritten as a
+`UNION` of index seeks before these indexes were used at all.
 
 ## 4. API contract (`/api/v1`)
 

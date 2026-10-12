@@ -240,22 +240,26 @@ namespace OpsFlow.Api.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AssigneeId")
-                        .HasDatabaseName("IX_ApprovalSteps_AssigneeId_Pending")
-                        .HasFilter("[Status] = 'Pending'");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AssigneeId"), new[] { "RequestId", "Round", "StepOrder", "Kind" });
-
-                    b.HasIndex("DecidedById");
-
-                    b.HasIndex("Kind")
-                        .HasDatabaseName("IX_ApprovalSteps_Kind_PendingUnassigned")
-                        .HasFilter("[Status] = 'Pending' AND [AssigneeId] IS NULL");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("Kind"), new[] { "RequestId", "Round", "StepOrder" });
-
                     b.HasIndex("RequestId", "Round", "StepOrder")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId"), new[] { "RequestId" });
+
+                    b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId_Pending")
+                        .HasFilter("[Status] = 'Pending'");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId_Pending"), new[] { "RequestId", "Round", "StepOrder", "Kind" });
+
+                    b.HasIndex(new[] { "DecidedById" }, "IX_ApprovalSteps_DecidedById");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "DecidedById" }, "IX_ApprovalSteps_DecidedById"), new[] { "RequestId" });
+
+                    b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Kind_PendingUnassigned")
+                        .HasFilter("[Status] = 'Pending' AND [AssigneeId] IS NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Kind_PendingUnassigned"), new[] { "RequestId", "Round", "StepOrder" });
 
                     b.ToTable("ApprovalSteps", null, t =>
                         {

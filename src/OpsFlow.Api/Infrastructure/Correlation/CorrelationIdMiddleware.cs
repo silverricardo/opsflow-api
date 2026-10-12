@@ -19,6 +19,7 @@ public sealed partial class CorrelationIdMiddleware(RequestDelegate next)
             : Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
 
         correlation.CorrelationId = correlationId;
+        Activity.Current?.SetTag("opsflow.correlation_id", correlationId);
         context.Response.OnStarting(() =>
         {
             context.Response.Headers[CorrelationContext.HeaderName] = correlationId;

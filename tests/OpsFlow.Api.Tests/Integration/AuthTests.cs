@@ -120,6 +120,35 @@ public class AuthTests : IntegrationTestBase
     }
 
     [Test]
+    public async Task Token_RateLimit_IsPerClientIp_WhenForwardedHeadersAreEnabled()
+    {
+        await using var factory = new OpsFlowApiFactory(
+            IntegrationTestEnvironment.ConnectionString,
+            new Dictionary<string, string?> { ["RateLimiting:TokenPermitLimit"] = "2", ["ForwardedHeaders:Enabled"] = "true" });
+        using var client = factory.CreateClient();
+
+        async Task<HttpStatusCode> AttemptFromAsync(string ip)
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, TokenUrl)
+            {
+                Content = JsonContent.Create(new { email = Employee1.Email, password = "wrong-password" }),
+            };
+            message.Headers.Add("X-Forwarded-For", ip);
+            using var response = await client.SendAsync(message);
+            return response.StatusCode;
+        }
+
+        var clientA = new[] { await AttemptFromAsync("203.0.113.10"), await AttemptFromAsync("203.0.113.10"), await AttemptFromAsync("203.0.113.10") };
+        var clientB = await AttemptFromAsync("198.51.100.20");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(clientA, Is.EqualTo(new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests }));
+            Assert.That(clientB, Is.EqualTo(HttpStatusCode.Unauthorized), "another client behind the same proxy is not throttled");
+        });
+    }
+
+    [Test]
     public async Task Token_SixthAttemptWithinAMinute_Returns429WithRetryAfter()
     {
         // A dedicated host with the production limit, so other tests do not share its window.

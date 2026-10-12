@@ -12,6 +12,7 @@
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <PackageReference Include="Moq" />
     <PackageReference Include="Testcontainers.MsSql" />
   </ItemGroup>

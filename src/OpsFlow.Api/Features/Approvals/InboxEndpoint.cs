@@ -48,12 +48,16 @@ public static class InboxEndpoint
         var me = actor.UserId;
         var poolKinds = Enum.GetValues<StepKind>().Where(kind => ApprovalStep.IsEligibleRole(kind, actor.Role)).ToList();
 
+        // Two branches instead of "assigned to me OR (unassigned AND my pool)": each one is an index seek on
+        // a filtered index of pending steps. The OR version scanned the index (measured in the baseline).
+        var pending = db.ApprovalSteps.Where(s => s.Status == StepStatus.Pending);
+        var candidates = pending.Where(s => s.AssigneeId == me)
+            .Concat(pending.Where(s => s.AssigneeId == null && poolKinds.Contains(s.Kind)));
+
         var inbox =
-            from step in db.ApprovalSteps
+            from step in candidates
             join request in db.Requests on step.RequestId equals request.Id
-            where step.Status == StepStatus.Pending
-                && (step.AssigneeId == me || (step.AssigneeId == null && poolKinds.Contains(step.Kind)))
-                && request.Status == RequestStatus.InApproval
+            where request.Status == RequestStatus.InApproval
                 && step.Round == request.CurrentRound
                 && request.RequesterId != me
                 && !db.ApprovalSteps.Any(earlier => earlier.RequestId == step.RequestId && earlier.Round == step.Round

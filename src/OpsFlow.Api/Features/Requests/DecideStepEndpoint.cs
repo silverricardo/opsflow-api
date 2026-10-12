@@ -4,8 +4,9 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Errors;
-using OpsFlow.Api.Infrastructure.Idempotency;
 using OpsFlow.Api.Infrastructure.Http;
+using OpsFlow.Api.Infrastructure.Idempotency;
+using OpsFlow.Api.Infrastructure.Observability;
 using OpsFlow.Api.Infrastructure.Validation;
 using OpsFlow.Api.Persistence;
 using OpsFlow.Domain.Requests;
@@ -44,6 +45,7 @@ public static class DecideStepEndpoint
         ClaimsPrincipal principal,
         OpsFlowDbContext db,
         TimeProvider clock,
+        OpsFlowMetrics metrics,
         HttpResponse response,
         CancellationToken cancellationToken)
     {
@@ -64,6 +66,8 @@ public static class DecideStepEndpoint
         {
             return conflict;
         }
+
+        metrics.DecisionRecorded(body.Decision.Value);
 
         return await db.DetailsAfterChangeAsync(id, actor, response, cancellationToken);
     }
