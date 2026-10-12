@@ -86,6 +86,38 @@ machine-dependent, so read it as an order of magnitude.
 
 Reproduce with `perf/query-bench.sh` against the performance stack.
 
+### GitHub-hosted runner, 2026-10-12: after the query optimisation
+
+[Workflow run](https://github.com/silverricardo/opsflow-api/actions/runs/38307436362) on commit `ebefdd6`, with the
+same data, script and parameters as the baseline below. **The runner had a different CPU** (Intel Xeon Platinum
+8573C instead of AMD EPYC 7763): GitHub does not pin runner hardware. Part of the latency change is therefore
+hardware. Operations whose code did not change (the writes, `get`) also got faster. The **logical reads** in
+the previous section are the hardware-independent evidence for the optimisation itself.
+
+| Operation (p95) | Baseline (EPYC) | After (Xeon) | Target (< 200 ms) |
+|---|---|---|---|
+| `list_all` (Finance, 100k visible) | 745 ms | **80 ms** | ✓, now met (~9×; matches 5–10× fewer reads and CPU) |
+| `get` | 26 ms | 9 ms | ✓ |
+| `decide` | 147 ms | 64 ms | ✓ |
+| `submit` | 196 ms | 73 ms | ✓ |
+| `create` | 281 ms | 103 ms | ✓, now met (code unchanged: hardware) |
+| `inbox` | 1.33 s | **440 ms** | ✗ |
+| `list_mine` (employee) | 1.92 s (median 351 ms) | **767 ms** (median 123 ms) | ✗ |
+| Throughput | 25.8 req/s | **41.0 req/s** | — |
+| Errors (all `409`/`412` contention) | 0.88% | 0.40% | < 1% ✓ |
+
+All 5,081 checks passed. Database statistics from the run confirm the new indexes are used:
+`IX_ApprovalSteps_Current_Assignee` 1,242 seeks, `IX_Requests_CreatedAt` 348 seeks, `IX_Requests_Amount` 161.
+
+**What is still above target, and why:**
+- **Inbox (440 ms):** the inbox `COUNT` reads ~5.2k pages per call. That cost is proportional to the caller's inbox,
+  and the seed gives each manager ~1,600 pending approvals. The pool branch's filtered index was not chosen
+  (0 seeks), which is worth a look at the actual plan. Options if real inboxes grow this large: denormalise
+  `SubmittedAt`/`RequesterId` onto the step, or cap the count.
+- **Employee list (767 ms p95, 123 ms median):** the slow tail comes from the filter variants in the script.
+  `q=Laptop` is a `LIKE '%term%'` scan by design. The visibility `UNION` plus `COUNT` reads ~2.1k pages for an
+  employee with ~500 requests. Next: full-text search for `q`, and an approximate or cached count.
+
 ### GitHub-hosted runner, 2026-10-12 (reference baseline)
 
 **Environment (recorded by the workflow):** GitHub Actions `ubuntu-24.04` runner, AMD EPYC 7763 with 4 vCPUs, 15 GB
