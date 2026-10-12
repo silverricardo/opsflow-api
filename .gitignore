@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 .env
 *.env.local
 perf/results/
+
+# Word/PDF deliverables generated locally (not part of the repository)
+documentos/
