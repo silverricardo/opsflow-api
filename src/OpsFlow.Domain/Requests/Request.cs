@@ -166,6 +166,7 @@ public sealed class Request
         Status = RequestStatus.InApproval;
         SubmittedAt = now;
         UpdatedAt = now;
+        RefreshCurrentStep();
 
         AddAudit(
             actor,
@@ -296,6 +297,8 @@ public sealed class Request
                 break;
         }
 
+        RefreshCurrentStep();
+
         // Always touch the root so the aggregate's rowversion (the ETag) changes with every decision.
         UpdatedAt = now;
 
@@ -400,6 +403,7 @@ public sealed class Request
         var previousStatus = Status;
         SkipPendingSteps(CurrentRoundSteps());
         Status = RequestStatus.Cancelled;
+        RefreshCurrentStep();
         CompletedAt = now;
         UpdatedAt = now;
         AddAudit(actor, AuditActions.RequestCancelled, previousStatus, Status, now, details: null);
@@ -433,6 +437,17 @@ public sealed class Request
 
     public IEnumerable<ApprovalStep> CurrentRoundSteps() =>
         _steps.Where(s => s.Round == CurrentRound).OrderBy(s => s.StepOrder);
+
+    /// <summary>Keeps <see cref="ApprovalStep.IsCurrent"/> true for the first pending step of the round, and only while in approval.</summary>
+    private void RefreshCurrentStep()
+    {
+        var roundSteps = CurrentRoundSteps().ToList();
+        var current = Status == RequestStatus.InApproval ? roundSteps.FirstOrDefault(s => s.Status == StepStatus.Pending) : null;
+        foreach (var step in roundSteps)
+        {
+            step.SetCurrent(step == current);
+        }
+    }
 
     private (ApprovalStep? Step, DomainError? Error) FindPendingStep(long stepId)
     {

@@ -7,7 +7,7 @@ namespace OpsFlow.Api.Persistence.Configurations;
 
 internal sealed class ApprovalStepConfiguration : IEntityTypeConfiguration<ApprovalStep>
 {
-    private const string PendingFilter = "[Status] = 'Pending'";
+    private const string CurrentFilter = "[IsCurrent] = 1";
 
     public void Configure(EntityTypeBuilder<ApprovalStep> builder)
     {
@@ -16,6 +16,7 @@ internal sealed class ApprovalStepConfiguration : IEntityTypeConfiguration<Appro
             t.HasCheckConstraint("CK_ApprovalSteps_Status", SqlConstraints.InEnum<StepStatus>("Status"));
             t.HasCheckConstraint("CK_ApprovalSteps_Kind", SqlConstraints.InEnum<StepKind>("Kind"));
             t.HasCheckConstraint("CK_ApprovalSteps_Round", "[Round] >= 1");
+            t.HasCheckConstraint("CK_ApprovalSteps_CurrentIsPending", "[IsCurrent] = 0 OR [Status] = 'Pending'");
         });
 
         builder.Property(s => s.Comment).HasMaxLength(ApprovalStep.CommentMaxLength);
@@ -30,14 +31,14 @@ internal sealed class ApprovalStepConfiguration : IEntityTypeConfiguration<Appro
 
         builder.HasIndex(s => new { s.RequestId, s.Round, s.StepOrder }).IsUnique();
 
-        // Inbox: pending steps assigned to me.
-        builder.HasIndex(s => s.AssigneeId, "IX_ApprovalSteps_AssigneeId_Pending")
-            .HasFilter(PendingFilter)
-            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder, s.Kind });
+        // Inbox: the current (actionable) step, assigned to me. Only one row per request in approval.
+        builder.HasIndex(s => s.AssigneeId, "IX_ApprovalSteps_Current_Assignee")
+            .HasFilter(CurrentFilter)
+            .IncludeProperties(s => new { s.RequestId, s.Round, s.Kind });
 
-        // Inbox: unassigned pending steps in my role's pool.
-        builder.HasIndex(s => s.Kind, "IX_ApprovalSteps_Kind_PendingUnassigned")
-            .HasFilter($"{PendingFilter} AND [AssigneeId] IS NULL")
-            .IncludeProperties(s => new { s.RequestId, s.Round, s.StepOrder });
+        // Inbox: the current step, unassigned, in my role's pool.
+        builder.HasIndex(s => s.Kind, "IX_ApprovalSteps_Current_Pool")
+            .HasFilter($"{CurrentFilter} AND [AssigneeId] IS NULL")
+            .IncludeProperties(s => new { s.RequestId, s.Round });
     }
 }

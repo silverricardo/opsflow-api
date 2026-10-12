@@ -38,6 +38,13 @@ public sealed class ApprovalStep
 
     public string? Comment { get; private set; }
 
+    /// <summary>
+    /// True for exactly one step while the request is in approval: the one that can be decided now (BR-13).
+    /// Derived state, maintained by <see cref="Request"/> so that the inbox can find actionable steps with an
+    /// index seek instead of checking "no earlier pending step" for every pending step (see perf/README.md).
+    /// </summary>
+    public bool IsCurrent { get; private set; }
+
     /// <summary>Who may decide an unassigned step of this kind (BR-23, BR-25).</summary>
     public static bool IsEligibleRole(StepKind kind, UserRole role) => kind switch
     {
@@ -60,4 +67,6 @@ public sealed class ApprovalStep
     internal void Skip() => Status = StepStatus.Skipped;
 
     internal void AssignTo(int userId) => AssigneeId = userId;
+
+    internal void SetCurrent(bool isCurrent) => IsCurrent = isCurrent;
 }

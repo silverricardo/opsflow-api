@@ -34,9 +34,9 @@ public static class InboxEndpoint
             .WithSummary("Steps the caller can decide now: assigned to them, or unassigned in their role's pool. Oldest first.");
 
     /// <summary>
-    /// Mirrors the domain's decision rules in SQL (AC-20): only the current step of the current round
-    /// of a request in approval; never the caller's own requests; never a round they already decided in.
-    /// Served by the filtered indexes on pending steps.
+    /// Mirrors the domain's decision rules in SQL (AC-20): only the current step of a request in approval
+    /// (<c>IsCurrent</c>); never the caller's own requests; never a round they already decided in.
+    /// Served by the filtered indexes on current steps.
     /// </summary>
     private static async Task<Ok<PagedResponse<InboxItemResponse>>> GetInboxAsync(
         [AsParameters] PageQuery page,
@@ -48,20 +48,17 @@ public static class InboxEndpoint
         var me = actor.UserId;
         var poolKinds = Enum.GetValues<StepKind>().Where(kind => ApprovalStep.IsEligibleRole(kind, actor.Role)).ToList();
 
-        // Two branches instead of "assigned to me OR (unassigned AND my pool)": each one is an index seek on
-        // a filtered index of pending steps. The OR version scanned the index (measured in the baseline).
-        var pending = db.ApprovalSteps.Where(s => s.Status == StepStatus.Pending);
-        var candidates = pending.Where(s => s.AssigneeId == me)
-            .Concat(pending.Where(s => s.AssigneeId == null && poolKinds.Contains(s.Kind)));
+        // Only current steps are candidates: one per request in approval, maintained by the domain. Two
+        // branches ("assigned to me" / "unassigned in my pool"), each a seek on a filtered index of current
+        // steps. This replaced a "no earlier pending step" check per pending step (~16k reads per COUNT).
+        var current = db.ApprovalSteps.Where(s => s.IsCurrent);
+        var candidates = current.Where(s => s.AssigneeId == me)
+            .Concat(current.Where(s => s.AssigneeId == null && poolKinds.Contains(s.Kind)));
 
         var inbox =
             from step in candidates
             join request in db.Requests on step.RequestId equals request.Id
-            where request.Status == RequestStatus.InApproval
-                && step.Round == request.CurrentRound
-                && request.RequesterId != me
-                && !db.ApprovalSteps.Any(earlier => earlier.RequestId == step.RequestId && earlier.Round == step.Round
-                    && earlier.Status == StepStatus.Pending && earlier.StepOrder < step.StepOrder)
+            where request.RequesterId != me
                 && !db.ApprovalSteps.Any(decided => decided.RequestId == step.RequestId && decided.Round == step.Round
                     && decided.DecidedById == me)
             select new { step, request };

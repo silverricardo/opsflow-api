@@ -140,6 +140,7 @@ erDiagram
         int DecidedById FK "nullable"
         datetimeoffset DecidedAt "nullable"
         nvarchar(1000) Comment "nullable"
+        bit IsCurrent "the actionable step: one per request in approval"
     }
     ApprovalPolicyRules {
         int Id PK
@@ -190,8 +191,9 @@ All timestamps are stored as `datetimeoffset(3)` and written in UTC (`TimeProvid
 |---|---|
 | `IX_Requests_RequesterId_Status_CreatedAt` (incl. `Title, Amount, Reference, Category, UpdatedAt`) | "My requests" list, filtered by status, newest first |
 | `IX_Requests_Status_CreatedAt` (same includes) | Finance/Director/Admin lists filtered by status |
-| `IX_ApprovalSteps_AssigneeId_Pending` filtered `WHERE Status = 'Pending'` | Inbox: steps assigned to me |
-| `IX_ApprovalSteps_Kind_Pending_Unassigned` filtered `WHERE Status = 'Pending' AND AssigneeId IS NULL` | Inbox: role pool |
+| `IX_ApprovalSteps_Current_Assignee` filtered `WHERE IsCurrent = 1` | Inbox: the actionable step, assigned to me |
+| `IX_ApprovalSteps_Current_Pool` filtered `WHERE IsCurrent = 1 AND AssigneeId IS NULL` | Inbox: the actionable step in my role's pool |
+| `IX_Requests_CreatedAt`, `IX_Requests_Amount` (both `DESC`, then `Id DESC`) | Unfiltered lists sorted by date or amount: top N by seek, no sort (see perf/README.md) |
 | `IX_ApprovalSteps_AssigneeId`, `IX_ApprovalSteps_DecidedById` (incl. `RequestId`) | Visibility: requests I am or was assigned to or decided (added after the load test, see perf/README.md) |
 | `IX_AuditEntries_RequestId_OccurredAt` | Audit history for one request |
 | `IX_IdempotencyRecords_ExpiresAt` | Cleanup of expired keys |

@@ -217,6 +217,9 @@ namespace OpsFlow.Api.Persistence.Migrations
                     b.Property<int?>("DecidedById")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -247,22 +250,24 @@ namespace OpsFlow.Api.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId"), new[] { "RequestId" });
 
-                    b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId_Pending")
-                        .HasFilter("[Status] = 'Pending'");
+                    b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_Current_Assignee")
+                        .HasFilter("[IsCurrent] = 1");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_AssigneeId_Pending"), new[] { "RequestId", "Round", "StepOrder", "Kind" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssigneeId" }, "IX_ApprovalSteps_Current_Assignee"), new[] { "RequestId", "Round", "Kind" });
+
+                    b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Current_Pool")
+                        .HasFilter("[IsCurrent] = 1 AND [AssigneeId] IS NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Current_Pool"), new[] { "RequestId", "Round" });
 
                     b.HasIndex(new[] { "DecidedById" }, "IX_ApprovalSteps_DecidedById");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "DecidedById" }, "IX_ApprovalSteps_DecidedById"), new[] { "RequestId" });
 
-                    b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Kind_PendingUnassigned")
-                        .HasFilter("[Status] = 'Pending' AND [AssigneeId] IS NULL");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "Kind" }, "IX_ApprovalSteps_Kind_PendingUnassigned"), new[] { "RequestId", "Round", "StepOrder" });
-
                     b.ToTable("ApprovalSteps", null, t =>
                         {
+                            t.HasCheckConstraint("CK_ApprovalSteps_CurrentIsPending", "[IsCurrent] = 0 OR [Status] = 'Pending'");
+
                             t.HasCheckConstraint("CK_ApprovalSteps_Kind", "[Kind] IN ('Manager', 'Finance', 'Director')");
 
                             t.HasCheckConstraint("CK_ApprovalSteps_Round", "[Round] >= 1");
@@ -356,6 +361,12 @@ namespace OpsFlow.Api.Persistence.Migrations
                         .HasDatabaseName("IX_Requests_RequesterId_Status_CreatedAt");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("RequesterId", "Status", "CreatedAt"), new[] { "Reference", "Title", "Category", "Amount", "UpdatedAt" });
+
+                    b.HasIndex(new[] { "Amount", "Id" }, "IX_Requests_Amount")
+                        .IsDescending();
+
+                    b.HasIndex(new[] { "CreatedAt", "Id" }, "IX_Requests_CreatedAt")
+                        .IsDescending();
 
                     b.ToTable("Requests", null, t =>
                         {
