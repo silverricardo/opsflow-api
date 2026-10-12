@@ -47,6 +47,45 @@ environment and database statistics are uploaded as the `perf-results` artifact.
 Results are published here **only after a run**, with the environment they were measured on. Numbers from
 different environments are not comparable.
 
+### Query optimisation, 2026-10-12: database cost per request (deterministic)
+
+Latency on a busy laptop is noisy, but **logical reads are not**: they count the pages SQL Server touches, whatever
+the machine is doing. `perf/query-bench.sh` clears the plan cache, sends 10 real HTTP requests per endpoint
+against the 100k-request database, and reports reads, CPU and SQL statements **per request**. CPU is still
+machine-dependent, so read it as an order of magnitude.
+
+| Endpoint | Reads before | Reads after | CPU ms before → after |
+|---|---|---|---|
+| `list_all` default sort (newest first) | 2,835 | **516** | 375 → **22** |
+| `list_all` `sort=-amount` | 2,835 | **516** | 305 → **32** |
+| `list_all` `minAmount=5000` | 4,248 | **392** | 97 → **11** |
+| `list_all` `createdFrom=…` | 4,248 | **335** | 121 → **17** |
+| `list_all` `status=Approved` | 2,603 | 1,618 | 62 → 11 |
+| `list_all` `page=50` | 2,835 | 3,643 | 329 → **48** |
+| `inbox` (manager, 1,589 pending items) | 20,995 | **9,803** | 162 → 151 |
+| `inbox` (director) | 16,154 | **9,042** | 166 → 96 |
+| `inbox` (finance) | 10,458 | 9,786 | 265 → 142 |
+| `list_mine` (employee) | 2,779 | 2,539 | 66 → 74 |
+| `get` | 33 | 33 | 0.6 → 0.8 |
+
+**What changed and why:**
+- **Lists:** Finance, Director and Admin see every request. Sorting by date or amount used to sort all 100k rows to
+  return 20 (the CPU column). Two indexes, `(CreatedAt DESC, Id DESC)` and `(Amount DESC, Id DESC)`, turn
+  "top 20" into an index seek, in both directions, since SQL Server scans an index backwards for ascending sorts.
+  They also serve the date-range filter. Deep pages (`page=50`) read more pages, because the offset rows are
+  looked up too, but cost 7× less CPU.
+- **Inbox:** finding the actionable step used to mean checking, for **every** pending step (43k), that no earlier
+  step was still pending. Each step now has an `IsCurrent` flag, maintained by the domain: exactly one step per
+  request in approval, covered by invariant tests. The migration backfills it with a single set-based statement,
+  verified on the 100k database (33,072 requests in approval, 33,072 current steps, 0 inconsistencies). Two
+  indexes filtered on `IsCurrent = 1` serve the two inbox branches. The `COUNT` dropped from 16,292 to 5,139
+  reads. The cost now grows with the **size of the caller's inbox** (about 3 reads per item), not with the size of
+  the database. The seed gives each manager an unrealistic ~1,600 pending approvals, so this is a worst case.
+- **Not changed:** the employee list is already a `UNION` of index seeks (see below). Its remaining cost is the
+  employee's own ~500 requests.
+
+Reproduce with `perf/query-bench.sh` against the performance stack.
+
 ### GitHub-hosted runner, 2026-10-12 (reference baseline)
 
 **Environment (recorded by the workflow):** GitHub Actions `ubuntu-24.04` runner, AMD EPYC 7763 with 4 vCPUs, 15 GB
@@ -122,13 +161,8 @@ and `(DecidedById)` indexes that include `RequestId`. The inbox's `OR` was split
 the visibility and authorization matrices, passes.
 
 **Still above target, next steps (hypotheses to verify with the same method):**
-1. **Inbox** (2.1 s, 15.6k reads per `COUNT`). The pool branch does not use
-   `IX_ApprovalSteps_Kind_PendingUnassigned` (0 seeks), and the two `NOT EXISTS` checks run per candidate.
-   Next: check the actual plan, and consider keeping the "current step" on the request so the
-   `NOT EXISTS (earlier pending step)` disappears.
-2. **Lists** (CPU-bound: ~2.3k reads but 340 ms CPU per page query here). Correlated subqueries for the
-   requester's display name, plus `COUNT(*)` on every page. Next: join users once, and cache or skip `totalCount`
-   for deep pages (ADR-008).
+1. ~~**Inbox**~~ and ~~**lists**~~: done, see "Query optimisation" above. The remaining inbox cost scales with
+   inbox size. If inboxes grow to thousands of items, denormalise the sort key (`SubmittedAt`) onto the step.
 3. **Writes** (create/submit/decide 250–415 ms): two or three round trips (load, save, re-read for the
    response). Next: build the response from the saved aggregate instead of re-reading. Re-measure on
    standardised hardware first, because this machine inflates CPU-bound work.
