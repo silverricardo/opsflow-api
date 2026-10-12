@@ -29,7 +29,7 @@ virtual users.
 cp .env.example .env    # if not done already
 docker compose -f docker-compose.yml -f docker-compose.perf.yml up -d --build
 # wait for "Performance seed finished" in: docker compose -f docker-compose.yml -f docker-compose.perf.yml logs -f api
-docker compose -f docker-compose.yml -f docker-compose.perf.yml --profile perf run --rm k6 run /scripts/baseline.js
+docker compose -f docker-compose.yml -f docker-compose.perf.yml --profile perf run --rm --no-deps k6 run /scripts/baseline.js
 docker compose -f docker-compose.yml -f docker-compose.perf.yml cp perf/sql/top-queries.sql sqlserver:/tmp/q.sql
 docker compose -f docker-compose.yml -f docker-compose.perf.yml exec sqlserver \
   /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -W -i /tmp/q.sql

@@ -40,6 +40,8 @@ jobs:
             echo "SEED_DEMO_PASSWORD=Perf-$(openssl rand -hex 12)"
           } > .env
           mkdir -p perf/results
+          # k6 runs as a non-root user in its container and writes its JSON summary here.
+          chmod a+w perf/results
 
       - name: Record the environment
         run: |
@@ -63,13 +65,23 @@ jobs:
           $COMPOSE logs api 2>&1 | grep "Performance seed finished" | tee -a perf/results/environment.txt
 
       - name: Run k6
-        # Threshold breaches make k6 exit non-zero; keep going so the results are always published.
-        continue-on-error: true
-        run: $COMPOSE run --rm k6 run /scripts/baseline.js 2>&1 | tee perf/results/k6-output.txt
+        # --no-deps: do not recreate the already-running API (that made k6 start against a restarting API).
+        # Exit code 99 means thresholds were missed, which is a valid measurement and must not fail the job.
+        # Anything else is a broken run and must fail visibly (pipefail, so tee cannot hide the exit code).
+        run: |
+          set -o pipefail
+          status=0
+          $COMPOSE run --rm --no-deps k6 run /scripts/baseline.js 2>&1 | tee perf/results/k6-output.txt || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 99 ]; then
+            echo "::error::k6 failed with exit code $status (not a threshold breach)"
+            exit "$status"
+          fi
+          [ "$status" -eq 99 ] && echo "::warning::Some latency thresholds were not met (see the summary)" || true
 
       - name: Collect database statistics
         if: always()
         run: |
+          set -o pipefail
           $COMPOSE cp perf/sql/top-queries.sql sqlserver:/tmp/top-queries.sql
           set -a; . ./.env; set +a
           $COMPOSE exec -T sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -W -s '|' \
