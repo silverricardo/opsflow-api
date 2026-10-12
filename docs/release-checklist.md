@@ -29,15 +29,16 @@
 ## Steps to publish (repository owner)
 
 1. **Merge** `feature/release-prep` into `main` through a pull request. It contains every phase.
-2. **Rename** the repository to `opsflow-api` (Settings → General). Then update the badge and clone URL in the
-   README, and run `git remote set-url origin https://github.com/silverricardo/opsflow-api.git` locally.
+2. ~~**Rename** the repository to `opsflow-api`~~ ✅ Done; links updated.
 3. **About** (repository home page → ⚙️):
-   - *Description:* `Approval workflows API for purchase and expense requests — .NET 10, ASP.NET Core, EF Core,
-     SQL Server. Policy-driven approval chains, segregation of duties, optimistic concurrency, idempotent
-     retries, audit trail, OpenTelemetry, k6 load tests.`
-   - *Topics:* `dotnet`, `aspnetcore`, `csharp`, `entity-framework-core`, `sql-server`, `rest-api`,
-     `clean-code`, `domain-driven-design`, `testcontainers`, `docker`, `github-actions`, `opentelemetry`,
-     `k6`, `approval-workflow`.
+   - *Description* (one line; keep it unwrapped when pasting):
+
+     ```text
+     Approval workflows API for purchase and expense requests: .NET 10, EF Core, SQL Server. Policy-driven approvals, optimistic concurrency, idempotent retries, audit trail, k6-tested.
+     ```
+   - *Topics* (type each one and press Enter): `dotnet`, `aspnetcore`, `csharp`, `entity-framework-core`,
+     `sql-server`, `rest-api`, `domain-driven-design`, `testcontainers`, `docker`, `github-actions`,
+     `opentelemetry`, `k6`, `approval-workflow`.
 4. **Security:** enable *Private vulnerability reporting* (Settings → Code security), as referenced by
    SECURITY.md. Enable Dependabot alerts.
 5. **Branch protection** on `main`: require pull requests and the `CI` checks (*Build, checks and tests*,
