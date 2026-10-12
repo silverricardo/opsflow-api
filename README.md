@@ -1,6 +1,6 @@
 # OpsFlow: Approval Workflows API
 
-[![CI](https://github.com/silverricardo/public_project/actions/workflows/ci.yml/badge.svg)](https://github.com/silverricardo/public_project/actions/workflows/ci.yml)
+[![CI](https://github.com/silverricardo/opsflow-api/actions/workflows/ci.yml/badge.svg)](https://github.com/silverricardo/opsflow-api/actions/workflows/ci.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![SQL Server](https://img.shields.io/badge/SQL%20Server-2022-CC2927)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -92,7 +92,7 @@ FluentAssertions are deliberately avoided, because they are now commercially lic
 Requirements: Docker Desktop, or Docker Engine with Compose v2. Leave about 3 GB of free RAM for SQL Server.
 
 ```bash
-git clone https://github.com/silverricardo/public_project.git opsflow && cd opsflow
+git clone https://github.com/silverricardo/opsflow-api.git && cd opsflow-api
 cp .env.example .env            # Windows PowerShell: Copy-Item .env.example .env
 docker compose up -d --build    # first run: ~2–5 min (image downloads, migrations, demo data)
 ```
