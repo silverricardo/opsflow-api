@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OpsFlow.Api.Infrastructure.Errors;
 using OpsFlow.Api.Infrastructure.Http;
 using OpsFlow.Api.Persistence;
+using OpsFlow.Domain.Common;
 using OpsFlow.Domain.Requests;
 
 namespace OpsFlow.Api.Features.Requests;
@@ -81,6 +82,44 @@ internal static class RequestCommands
 
     private static bool IsUniqueKeyViolation(DbUpdateException exception) =>
         exception.InnerException is SqlException { Number: 2601 or 2627 };
+
+    /// <summary>
+    /// The pipeline shared by every command on an existing request: load (428/404/412), apply the domain
+    /// operation, save (412 on lost races), and return the updated request with its new ETag.
+    /// </summary>
+    public static async Task<Results<Ok<RequestDetailsResponse>, ProblemHttpResult>> ExecuteAsync(
+        this OpsFlowDbContext db,
+        long requestId,
+        Actor actor,
+        string? ifMatch,
+        bool withCurrentRoundSteps,
+        Func<Request, Task<Result>> operation,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var (request, problem) = await db.LoadForCommandAsync(requestId, actor, ifMatch, withCurrentRoundSteps, cancellationToken);
+        if (request is null)
+        {
+            return problem!;
+        }
+
+        var result = await operation(request);
+        if (!result.IsSuccess)
+        {
+            return result.Error.ToProblem();
+        }
+
+        if (await db.SaveAggregateAsync(cancellationToken) is { } conflict)
+        {
+            return conflict;
+        }
+
+        // The command is committed: finish without the request's token, so a client that disconnects now
+        // cannot turn a completed command into an error (and an idempotent retry into a duplicate).
+        return await db.DetailsAfterChangeAsync(requestId, actor, response, CancellationToken.None);
+    }
 
     /// <summary>Re-reads the request after a change and returns it with its new ETag.</summary>
     public static async Task<Ok<RequestDetailsResponse>> DetailsAfterChangeAsync(

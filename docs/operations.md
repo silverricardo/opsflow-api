@@ -19,6 +19,7 @@ in the repository.
 | `Seed__Enabled`, `Seed__Mode`, `Seed__DemoPassword` | password: **yes** | `false` | Refused in `Production`. |
 | `OpenApi__Enabled` | no | `false` | Exposes `/openapi/v1.json` and `/scalar`. |
 | `RateLimiting__TokenPermitLimit` | no | `5` | Sign-in attempts per minute per client IP. |
+| `SignInThrottle__MaxFailures` / `WindowMinutes` | no | `10` / `15` | Failed sign-ins allowed per account per window (any IP). |
 | `RateLimiting__GlobalTokenLimit` / `GlobalTokensPerSecond` | no | `100` / `50` | Token bucket per user (or per IP when anonymous). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | Turns on OTLP export of traces and metrics. |
 | `ForwardedHeaders__Enabled` | no | `false` | Trust `X-Forwarded-For` / `-Proto` from the nearest proxy. Enable it only behind an ingress. |
@@ -45,6 +46,8 @@ instance, which turns a partial outage into a full one.
     `X-Correlation-Id` response header, included in every error body (`correlationId`), and stored on every
     audit entry.
   - **`@tr` / `@sp`**: the trace and span IDs, for joining logs with traces.
+  - The correlation ID can come from the caller, so it is a convenience for support, **not** a trusted
+    value. Do not use it for security decisions. The trace ID is always server-generated.
   - `UserId` on the request-completion event.
 - What is never logged: passwords, tokens, the `Authorization` header or e-mail addresses. Failed sign-ins log
   the user ID only when the account exists.
@@ -87,6 +90,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889 docker compose --profile obse
 | `401` right after deactivating a user is *not* immediate | Tokens are valid until they expire | By design: at most `AccessTokenLifetimeMinutes`. |
 | `500 server.error` | Unhandled exception | Search the logs for the `correlationId`: the exception is logged at Error level with its stack trace. The response never contains it. |
 | Slow responses | See §6 | Find the slow endpoint in the request logs (`Elapsed`) or traces, then the slow SQL span. |
+| `429` on sign-in for one account only | Per-account throttle after repeated failures | Expires after `SignInThrottle__WindowMinutes`. Repeated cases for one account suggest a password-guessing attempt. |
 
 ## 6. Performance: likely bottlenecks and how to measure them
 
@@ -97,9 +101,9 @@ These are **hypotheses ranked by expected impact**, not measurements. The measur
    that counts every matching request. Measure with `SET STATISTICS IO, TIME ON` on the generated query, or the
    `avg_logical_reads` of the count statement in `perf/sql/top-queries.sql`. If needed: cache counts, return an
    approximate count, or switch to keyset pagination (ADR-008).
-2. **Visibility filter for employees and managers.** The `OR` across `RequesterId`, an `EXISTS` on steps and an
-   `EXISTS` on users can prevent an index seek. Measure: compare the execution plan for an employee and for
-   Finance. Mitigation: split it into a `UNION` of three seeks, or store the requester's manager on the request.
+2. **Visibility filter for employees and managers.** ✅ *Confirmed and fixed.* The original `OR` of three
+   conditions used no index (~743k logical reads per `COUNT`). It is now a `UNION` of index seeks (~2k reads).
+   See perf/README.md.
 3. **Title search `LIKE '%term%'`.** This is a scan by definition. Mitigation: SQL Server full-text search, or a
    search service if search becomes a key feature.
 4. **Audit and idempotency growth.** Both are append-only. Plan for retention (idempotency is cleaned up after

@@ -1,0 +1,63 @@
+# OpsFlow request samples — VS Code (REST Client), Visual Studio and Rider run this file directly.
+# Start the stack first (README "Run it locally"), then set the password from SEED_DEMO_PASSWORD in your .env.
+
+@baseUrl = http://localhost:8080
+@password = <your SEED_DEMO_PASSWORD>
+
+### 1. Sign in as an employee
+# @name employeeLogin
+POST {{baseUrl}}/api/v1/auth/token
+Content-Type: application/json
+
+{ "email": "employee1@opsflow.local", "password": "{{password}}" }
+
+### 2. Create a draft request (Idempotency-Key makes retries safe)
+# @name created
+POST {{baseUrl}}/api/v1/requests
+Authorization: Bearer {{employeeLogin.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: sample-create-1
+
+{ "title": "New laptop", "description": "Replacement for a 5-year-old machine", "category": "Purchase", "amount": 1450.00 }
+
+### 3. Submit it: If-Match must carry the ETag from the previous response (412 if stale, 428 if missing)
+# @name submitted
+POST {{baseUrl}}/api/v1/requests/{{created.response.body.id}}/submit
+Authorization: Bearer {{employeeLogin.response.body.accessToken}}
+If-Match: {{created.response.headers.ETag}}
+
+### 4. Sign in as the employee's manager and open the approvals inbox
+# @name managerLogin
+POST {{baseUrl}}/api/v1/auth/token
+Content-Type: application/json
+
+{ "email": "manager1@opsflow.local", "password": "{{password}}" }
+
+###
+GET {{baseUrl}}/api/v1/approvals/inbox
+Authorization: Bearer {{managerLogin.response.body.accessToken}}
+
+### 5. Read the request as the manager (fresh ETag) and approve the current step
+# @name forManager
+GET {{baseUrl}}/api/v1/requests/{{created.response.body.id}}
+Authorization: Bearer {{managerLogin.response.body.accessToken}}
+
+###
+POST {{baseUrl}}/api/v1/requests/{{created.response.body.id}}/steps/{{forManager.response.body.steps[0].id}}/decision
+Authorization: Bearer {{managerLogin.response.body.accessToken}}
+If-Match: {{forManager.response.headers.ETag}}
+Content-Type: application/json
+
+{ "decision": "Approve", "comment": "Approved: within the team budget." }
+
+### 6. Audit history of the request
+GET {{baseUrl}}/api/v1/requests/{{created.response.body.id}}/audit
+Authorization: Bearer {{employeeLogin.response.body.accessToken}}
+
+### 7. Lists: filter, sort and page (sort fields: createdAt, updatedAt, amount, reference; '-' = descending)
+GET {{baseUrl}}/api/v1/requests?status=Approved&sort=-amount&page=1&pageSize=20
+Authorization: Bearer {{employeeLogin.response.body.accessToken}}
+
+### 8. An error, to see the problem-details shape (unknown sort field → 400 validation.failed)
+GET {{baseUrl}}/api/v1/requests?sort=title
+Authorization: Bearer {{employeeLogin.response.body.accessToken}}

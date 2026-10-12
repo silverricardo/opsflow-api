@@ -36,7 +36,7 @@ public static class StepAssignmentEndpoints
             .WithName("ReassignStep")
             .WithSummary("Administrators: move a pending approval step to another eligible user. Requires If-Match.");
 
-    private static async Task<Results<Ok<RequestDetailsResponse>, ProblemHttpResult>> ClaimAsync(
+    private static Task<Results<Ok<RequestDetailsResponse>, ProblemHttpResult>> ClaimAsync(
         long id,
         long stepId,
         [FromHeader(Name = ETags.IfMatchHeader)] string? ifMatch,
@@ -47,24 +47,8 @@ public static class StepAssignmentEndpoints
         CancellationToken cancellationToken)
     {
         var actor = principal.ToActor();
-        var (request, problem) = await db.LoadForCommandAsync(id, actor, ifMatch, withCurrentRoundSteps: true, cancellationToken);
-        if (request is null)
-        {
-            return problem!;
-        }
-
-        var claimed = request.ClaimStep(stepId, actor, clock.GetUtcNow());
-        if (!claimed.IsSuccess)
-        {
-            return claimed.Error.ToProblem();
-        }
-
-        if (await db.SaveAggregateAsync(cancellationToken) is { } conflict)
-        {
-            return conflict;
-        }
-
-        return await db.DetailsAfterChangeAsync(id, actor, response, cancellationToken);
+        return db.ExecuteAsync(id, actor, ifMatch, withCurrentRoundSteps: true, request =>
+            Task.FromResult(request.ClaimStep(stepId, actor, clock.GetUtcNow())), response, cancellationToken);
     }
 
     private static async Task<Results<Ok<RequestDetailsResponse>, ProblemHttpResult>> ReassignAsync(
@@ -78,13 +62,6 @@ public static class StepAssignmentEndpoints
         HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var admin = principal.ToActor();
-        var (request, problem) = await db.LoadForCommandAsync(id, admin, ifMatch, withCurrentRoundSteps: true, cancellationToken);
-        if (request is null)
-        {
-            return problem!;
-        }
-
         var assignee = await db.Users
             .Where(u => u.Id == body.UserId)
             .Select(u => new { u.Id, u.Role, u.IsActive })
@@ -94,17 +71,9 @@ public static class StepAssignmentEndpoints
             return Problems.Create(StatusCodes.Status404NotFound, "user.not_found", "Not found", "The user does not exist.");
         }
 
-        var reassigned = request.ReassignStep(stepId, admin, new Actor(assignee.Id, assignee.Role), assignee.IsActive, clock.GetUtcNow());
-        if (!reassigned.IsSuccess)
-        {
-            return reassigned.Error.ToProblem();
-        }
-
-        if (await db.SaveAggregateAsync(cancellationToken) is { } conflict)
-        {
-            return conflict;
-        }
-
-        return await db.DetailsAfterChangeAsync(id, admin, response, cancellationToken);
+        var admin = principal.ToActor();
+        return await db.ExecuteAsync(id, admin, ifMatch, withCurrentRoundSteps: true, request =>
+            Task.FromResult(request.ReassignStep(stepId, admin, new Actor(assignee.Id, assignee.Role), assignee.IsActive, clock.GetUtcNow())),
+            response, cancellationToken);
     }
 }

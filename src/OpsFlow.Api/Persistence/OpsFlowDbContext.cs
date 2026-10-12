@@ -26,16 +26,23 @@ public sealed class OpsFlowDbContext(DbContextOptions<OpsFlowDbContext> options,
 
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
+    /// <summary>True once this context has committed changes; the idempotency filter relies on it.</summary>
+    public bool HasCommittedChanges { get; private set; }
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampAuditEntries();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+        HasCommittedChanges = true;
+        return saved;
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         StampAuditEntries();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        HasCommittedChanges = true;
+        return saved;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>

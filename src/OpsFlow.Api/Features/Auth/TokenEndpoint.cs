@@ -46,17 +46,29 @@ public static partial class TokenEndpoint
         OpsFlowDbContext db,
         IPasswordHasher<User> passwordHasher,
         TokenIssuer tokenIssuer,
+        SignInThrottle throttle,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger(typeof(TokenEndpoint));
         var email = User.NormalizeEmail(body.Email!);
+        if (throttle.IsBlocked(email))
+        {
+            LogThrottled(logger);
+            return Problems.Create(
+                StatusCodes.Status429TooManyRequests,
+                ErrorCodes.RateLimitExceeded,
+                "Too many requests",
+                "Too many failed sign-in attempts for this account. Try again later.");
+        }
+
         var user = await db.Users.SingleOrDefaultAsync(u => u.Email == email, cancellationToken);
 
         if (user is null)
         {
             passwordHasher.VerifyHashedPassword(DummyUser, DummyHash.Value, body.Password!);
             LogUnknownAccount(logger);
+            throttle.RecordFailure(email);
             return InvalidCredentials();
         }
 
@@ -64,6 +76,7 @@ public static partial class TokenEndpoint
         if (verification == PasswordVerificationResult.Failed || !user.IsActive)
         {
             LogFailedSignIn(logger, user.Id);
+            throttle.RecordFailure(email);
             return InvalidCredentials();
         }
 
@@ -73,6 +86,7 @@ public static partial class TokenEndpoint
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        throttle.Reset(email);
         var token = tokenIssuer.Issue(user.Id, user.Email, user.Role);
         LogSignedIn(logger, user.Id);
         return TypedResults.Ok(new TokenResponse(token.AccessToken, "Bearer", token.ExpiresAt));
@@ -91,6 +105,9 @@ public static partial class TokenEndpoint
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed sign-in attempt for user {UserId}.")]
     private static partial void LogFailedSignIn(ILogger logger, int userId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sign-in refused: too many failed attempts for the account.")]
+    private static partial void LogThrottled(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} signed in.")]
     private static partial void LogSignedIn(ILogger logger, int userId);

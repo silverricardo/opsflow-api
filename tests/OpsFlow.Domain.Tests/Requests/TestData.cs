@@ -17,6 +17,10 @@ internal static class TestData
     public static readonly Actor Finance1 = new(20, UserRole.Finance);
     public static readonly Actor Finance2 = new(21, UserRole.Finance);
     public static readonly Actor Director = new(30, UserRole.Director);
+    public static readonly Actor Director2 = new(31, UserRole.Director);
+
+    /// <summary>Active Finance and Director users available to decide later steps.</summary>
+    public static readonly IReadOnlyCollection<Actor> Approvers = [Finance1, Finance2, Director, Director2];
 
     /// <summary>The default policy from BR-11.</summary>
     public static ApprovalPolicy DefaultPolicy() => new(
@@ -30,11 +34,11 @@ internal static class TestData
         Request.Create(requester ?? Employee, "New laptop", "For the new hire", RequestCategory.Purchase, amount, Now).Value;
 
     /// <summary>A request in approval whose steps have IDs 1..n, as they would after being saved.</summary>
-    public static Request SubmittedRequest(decimal amount = 1_200m, Actor? requester = null, int managerId = ManagerId)
+    public static Request SubmittedRequest(decimal amount = 1_200m, Actor? requester = null, Actor? manager = null)
     {
         var actor = requester ?? Employee;
         var request = DraftRequest(amount, actor);
-        Assert.That(request.Submit(actor, managerId, DefaultPolicy(), Now).IsSuccess, Is.True);
+        Assert.That(request.Submit(actor, manager ?? Manager, DefaultPolicy(), Approvers, Now).IsSuccess, Is.True);
         AssignStepIds(request);
         return request;
     }

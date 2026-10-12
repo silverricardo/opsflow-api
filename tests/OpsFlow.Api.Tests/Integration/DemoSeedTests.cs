@@ -35,7 +35,7 @@ public class DemoSeedTests
             var statuses = await db.Requests.Select(r => r.Status).Distinct().ToListAsync();
             Assert.Multiple(async () =>
             {
-                Assert.That(await db.Users.CountAsync(), Is.EqualTo(9));
+                Assert.That(await db.Users.CountAsync(), Is.EqualTo(10));
                 Assert.That(statuses, Is.EquivalentTo(new[]
                 {
                     RequestStatus.Draft, RequestStatus.InApproval, RequestStatus.ChangesRequested,

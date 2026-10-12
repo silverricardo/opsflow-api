@@ -73,7 +73,11 @@ Rule IDs are referenced from tests (`BR-xx` in test names or descriptions).
   | 2 | Finance | > 5,000.00 | Any `Finance` user |
   | 3 | Director | > 50,000.00 | Any `Director` user |
 
-- **BR-12** Submission fails if the requester has no manager, or if their manager is inactive.
+- **BR-12** Submission fails if the requester has no manager, or if their manager is inactive or does not hold
+  an approver role (`Manager` or `Director`).
+- **BR-13a** Submission fails if any later step (Finance, Director) has no active eligible user other than the
+  requester and their manager. Such a chain could never complete (BR-20/BR-21), so it is rejected up front
+  instead of getting stuck in approval.
 - **BR-13** Steps are decided strictly in order; only the *current* step (lowest pending order in
   the current round) can be decided.
 - **BR-14** Possible decisions: `Approve`, `Reject`, `RequestChanges`. `Reject` and
@@ -102,8 +106,10 @@ Rule IDs are referenced from tests (`BR-xx` in test names or descriptions).
 - **BR-31** A requester cannot mark their own request as fulfilled, even if they are in Finance.
 
 ### Visibility
-- **BR-40** `Employee` and `Manager` users can see requests they created, requests where they are
-  or were assigned to/decided a step, and requests created by their direct reports.
+- **BR-40** `Employee` and `Manager` users can see requests they created, requests where they are currently
+  assigned to a step or have decided a step, and requests created by their direct reports. A user whose step is
+  reassigned to someone else before they decide it no longer sees the request. That is deliberate: reassignment
+  usually means they should not act on it, and the audit trail keeps the history.
 - **BR-41** `Finance`, `Director` and `Admin` users can see all requests.
 - **BR-42** A request that exists but is not visible to the caller is reported as **not found**,
   so that the API does not reveal which requests exist.
@@ -134,7 +140,7 @@ Rule IDs are referenced from tests (`BR-xx` in test names or descriptions).
 | NFR-03 | Liveness (`/health/live`) and readiness (`/health/ready`, includes database) endpoints. |
 | NFR-04 | The database schema is created exclusively through EF Core migrations; startup is reproducible from an empty SQL Server. |
 | NFR-05 | No secrets in the repository. Configuration comes from environment variables, user secrets or a secret store. |
-| NFR-06 | The token endpoint is rate limited; the API has a global rate limit per user/IP. |
+| NFR-06 | The token endpoint is rate limited per IP and failed sign-ins are limited per account; the API has a global rate limit per user/IP. |
 | NFR-07 | List endpoints are paginated (max page size 100) and only allow sorting by whitelisted fields. |
 | NFR-08 | All asynchronous I/O accepts and honours a `CancellationToken`. |
 | NFR-09 | A clean checkout runs with `docker compose up` and no private services. |

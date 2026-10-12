@@ -70,7 +70,7 @@ public class RequestCancelAndFulfilTests
     [Test]
     public void Fulfil_OwnRequest_IsForbidden()
     {
-        var request = SubmittedRequest(1_000m, requester: Finance1, managerId: Director.UserId);
+        var request = SubmittedRequest(1_000m, requester: Finance1, manager: Director);
         request.Decide(request.Step(StepKind.Manager).Id, Director, Decision.Approve, null, Now);
 
         Assert.Multiple(() =>

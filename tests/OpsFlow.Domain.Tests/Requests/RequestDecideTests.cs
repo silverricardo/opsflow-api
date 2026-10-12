@@ -100,7 +100,7 @@ public class RequestDecideTests
         request.Decide(request.Step(StepKind.Manager).Id, Manager, Decision.RequestChanges, "Too expensive", Later);
 
         Assert.That(request.Update(Employee, "Cheaper laptop", null, RequestCategory.Purchase, 3_000m, Later).IsSuccess, Is.True);
-        Assert.That(request.Submit(Employee, ManagerId, DefaultPolicy(), Later).IsSuccess, Is.True);
+        Assert.That(request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Later).IsSuccess, Is.True);
         AssignStepIds(request);
 
         Assert.Multiple(() =>
@@ -141,7 +141,7 @@ public class RequestDecideTests
     [Test]
     public void Decide_OwnRequest_IsSelfApproval()
     {
-        var request = SubmittedRequest(7_000m, requester: Finance1, managerId: Director.UserId);
+        var request = SubmittedRequest(7_000m, requester: Finance1, manager: Director);
         request.Decide(request.Step(StepKind.Manager).Id, Director, Decision.Approve, null, Later);
 
         var result = request.Decide(request.Step(StepKind.Finance).Id, Finance1, Decision.Approve, null, Later);
@@ -154,7 +154,7 @@ public class RequestDecideTests
     [Test]
     public void Decide_SecondStepInSameRoundBySameUser_IsDuplicateApprover()
     {
-        var request = SubmittedRequest(60_000m, requester: Manager, managerId: Director.UserId);
+        var request = SubmittedRequest(60_000m, requester: Manager, manager: Director);
         request.Decide(request.Step(StepKind.Manager).Id, Director, Decision.Approve, null, Later);
         request.Decide(request.Step(StepKind.Finance).Id, Finance1, Decision.Approve, null, Later);
 

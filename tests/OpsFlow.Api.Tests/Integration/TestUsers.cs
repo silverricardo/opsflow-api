@@ -29,6 +29,7 @@ internal static class TestUsers
     public const string Password = "Integration-Tests-Password-1";
 
     public static readonly TestUser Director = new("director", "Test Director", UserRole.Director);
+    public static readonly TestUser Director2 = new("director2", "Test Director Two", UserRole.Director);
     public static readonly TestUser Admin = new("admin", "Test Admin", UserRole.Admin);
     public static readonly TestUser Manager1 = new("manager1", "Test Manager One", UserRole.Manager, () => Director);
     public static readonly TestUser Manager2 = new("manager2", "Test Manager Two", UserRole.Manager, () => Director);
@@ -38,11 +39,14 @@ internal static class TestUsers
     public static readonly TestUser Employee2 = new("employee2", "Test Employee Two", UserRole.Employee, () => Manager1);
     public static readonly TestUser Employee3 = new("employee3", "Test Employee Three", UserRole.Employee, () => Manager2);
     public static readonly TestUser InactiveEmployee = new("inactive", "Test Inactive", UserRole.Employee, () => Manager1, inactive: true);
+    public static readonly TestUser InactiveManager = new("inactive.manager", "Test Inactive Manager", UserRole.Manager, () => Director, inactive: true);
+    public static readonly TestUser OrphanedEmployee = new("orphaned", "Test Orphaned Employee", UserRole.Employee, () => InactiveManager);
 
     /// <summary>Managers are listed before their reports so IDs exist when referenced.</summary>
     public static readonly IReadOnlyList<TestUser> All =
     [
-        Director, Admin, Manager1, Manager2, Finance1, Finance2, Employee1, Employee2, Employee3, InactiveEmployee,
+        Director, Director2, Admin, Manager1, Manager2, Finance1, Finance2, Employee1, Employee2, Employee3, InactiveEmployee,
+        InactiveManager, OrphanedEmployee,
     ];
 
     public static async Task SeedAsync(IServiceProvider services)

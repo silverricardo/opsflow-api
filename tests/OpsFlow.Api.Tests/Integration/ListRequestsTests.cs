@@ -54,11 +54,14 @@ public class ListRequestsTests : IntegrationTestBase
     }
 
     [Test]
-    public async Task List_FilterByTodayInUtc_IncludesRequestsCreatedToday()
+    public async Task List_FilterByDateRangeInUtc_IncludesRequestsCreatedInIt()
     {
-        var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        // A range around today, so the test cannot fail when it runs across midnight UTC.
+        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from = utcToday.AddDays(-1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var to = utcToday.AddDays(1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
-        var page = await ListAsync(Admin, $"createdFrom={today}&createdTo={today}");
+        var page = await ListAsync(Admin, $"createdFrom={from}&createdTo={to}");
 
         Assert.That(page.TotalCount, Is.EqualTo(4));
     }
@@ -93,6 +96,9 @@ public class ListRequestsTests : IntegrationTestBase
     [TestCase("pageSize=500", "pageSize")]
     [TestCase("minAmount=10&maxAmount=5", "maxAmount")]
     [TestCase("createdFrom=2026-02-01&createdTo=2026-01-01", "createdTo")]
+    [TestCase("createdTo=9999-12-31", "createdTo")]
+    [TestCase("page=100001", "page")]
+    [TestCase("page=2147483647&pageSize=100", "page")]
     public async Task List_WithInvalidQuery_Returns400NamingTheField(string query, string field)
     {
         using var client = ClientFor(Admin);

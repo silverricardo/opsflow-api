@@ -47,7 +47,8 @@ az containerapp env create -g $RG -n opsflow-env -l $LOC
   CREATE USER [opsflow-api] FROM EXTERNAL PROVIDER;
   ALTER ROLE db_datareader ADD MEMBER [opsflow-api];
   ALTER ROLE db_datawriter ADD MEMBER [opsflow-api];
-  -- The audit trigger also blocks UPDATE/DELETE on AuditEntries for this login (BR-52).
+  -- No ALTER/CONTROL: the append-only trigger (BR-52) blocks UPDATE/DELETE, but a login that can
+  -- TRUNCATE or DISABLE TRIGGER could still bypass it. Least privilege is part of the audit guarantee.
   ```
 
   Connection string (no secret in it): `Server=tcp:opsflow-sql.database.windows.net;Database=opsflow;Authentication=Active Directory Default;Encrypt=True`

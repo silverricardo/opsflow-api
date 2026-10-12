@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpsFlow.Api.Infrastructure.Auth;
 using OpsFlow.Api.Infrastructure.Correlation;
@@ -43,7 +44,8 @@ public static class ServiceRegistration
                     $"Connection string '{ConnectionStringName}' is not configured (ConnectionStrings__{ConnectionStringName}).");
             }
 
-            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure());
+            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure())
+                .AddInterceptors(provider.GetServices<IInterceptor>()); // none in production; tests inject faults
         });
 
         services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName);
@@ -55,6 +57,7 @@ public static class ServiceRegistration
         services.AddValidatorsFromAssemblyContaining<OpsFlowDbContext>(ServiceLifetime.Singleton);
         services.AddOpsFlowProblemDetails();
         services.AddOpsFlowAuthentication();
+        services.AddOpsFlowSignInThrottle();
         services.AddOpsFlowRateLimiting();
         services.AddOpsFlowForwardedHeaders();
 

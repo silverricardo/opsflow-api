@@ -9,11 +9,14 @@ public class SeedGuardTests
 {
     private const string StrongPassword = "Long-Enough-Password-1";
 
-    [Test]
-    public void EnsureSeedingAllowed_InProduction_Throws() =>
+    [TestCase("Production")]
+    [TestCase("Staging")]
+    [TestCase("Prod")]
+    [TestCase("Docker")]
+    public void EnsureSeedingAllowed_OutsideTheAllowList_Throws(string environmentName) =>
         Assert.That(
-            () => SeedGuard.EnsureSeedingAllowed(Environment(Environments.Production), Options(StrongPassword)),
-            Throws.InvalidOperationException.With.Message.Contains("Production"));
+            () => SeedGuard.EnsureSeedingAllowed(Environment(environmentName), Options(StrongPassword)),
+            Throws.InvalidOperationException.With.Message.Contains(environmentName));
 
     [TestCase(null)]
     [TestCase("")]
@@ -24,8 +27,9 @@ public class SeedGuardTests
             Throws.InvalidOperationException.With.Message.Contains("DemoPassword"));
 
     [TestCase("Development")]
-    [TestCase("Docker")]
-    public void EnsureSeedingAllowed_OutsideProductionWithStrongPassword_DoesNotThrow(string environmentName) =>
+    [TestCase("Testing")]
+    [TestCase("performance")]
+    public void EnsureSeedingAllowed_InAllowedEnvironmentWithStrongPassword_DoesNotThrow(string environmentName) =>
         Assert.That(() => SeedGuard.EnsureSeedingAllowed(Environment(environmentName), Options(StrongPassword)), Throws.Nothing);
 
     private static IHostEnvironment Environment(string name)

@@ -12,7 +12,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest(1_200m);
 
-        var result = request.Submit(Employee, ManagerId, DefaultPolicy(), Now.AddMinutes(5));
+        var result = request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now.AddMinutes(5));
 
         Assert.That(result.IsSuccess, Is.True);
         Assert.Multiple(() =>
@@ -38,7 +38,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest(75_000m);
 
-        request.Submit(Employee, ManagerId, DefaultPolicy(), Now);
+        request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now);
 
         Assert.Multiple(() =>
         {
@@ -57,7 +57,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest(amount);
 
-        request.Submit(Employee, ManagerId, DefaultPolicy(), Now);
+        request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now);
 
         Assert.That(request.Steps.Select(s => s.Kind), Is.EqualTo(expected));
     }
@@ -67,7 +67,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest();
 
-        var result = request.Submit(OtherEmployee, ManagerId, DefaultPolicy(), Now);
+        var result = request.Submit(OtherEmployee, Manager, DefaultPolicy(), Approvers, Now);
 
         Assert.Multiple(() =>
         {
@@ -82,7 +82,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest();
 
-        var result = request.Submit(Employee, requesterManagerId: null, DefaultPolicy(), Now);
+        var result = request.Submit(Employee, requesterManager: null, DefaultPolicy(), Approvers, Now);
 
         Assert.Multiple(() =>
         {
@@ -96,9 +96,9 @@ public class RequestSubmitTests
     public void Submit_WhenAlreadyInApproval_IsInvalidTransition()
     {
         var request = DraftRequest();
-        request.Submit(Employee, ManagerId, DefaultPolicy(), Now);
+        request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now);
 
-        var result = request.Submit(Employee, ManagerId, DefaultPolicy(), Now);
+        var result = request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now);
 
         Assert.Multiple(() =>
         {
@@ -112,7 +112,7 @@ public class RequestSubmitTests
     {
         var request = DraftRequest(75_000m);
 
-        request.Submit(Employee, ManagerId, DefaultPolicy(), Now);
+        request.Submit(Employee, Manager, DefaultPolicy(), Approvers, Now);
 
         var entry = request.AuditEntries[^1];
         Assert.Multiple(() =>
@@ -123,4 +123,45 @@ public class RequestSubmitTests
             Assert.That(entry.Details, Does.Contain("\"round\":1").And.Contain("\"kind\":\"Director\""));
         });
     }
+
+    [Test]
+    public void Submit_WhenManagerDoesNotHoldAnApproverRole_FailsAsNoManager()
+    {
+        var request = DraftRequest();
+
+        var result = request.Submit(Employee, requesterManager: Finance1, DefaultPolicy(), Approvers, Now);
+
+        Assert.That(result.Error, Is.EqualTo(RequestErrors.RequesterHasNoManager));
+    }
+
+    // BR-13a: a manager whose own manager is the only Director cannot get a Director step decided (BR-21).
+    [Test]
+    public void Submit_WhenOnlyEligibleDirectorIsTheManager_FailsWithNoEligibleApprover()
+    {
+        var request = DraftRequest(60_000m, requester: Manager);
+
+        var result = request.Submit(Manager, Director, DefaultPolicy(), [Finance1, Director], Now);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Error?.Code, Is.EqualTo("request.no_eligible_approver"));
+            Assert.That(result.Error?.Message, Does.Contain("Director"));
+            Assert.That(request.Status, Is.EqualTo(RequestStatus.Draft));
+            Assert.That(request.Submit(Manager, Director, DefaultPolicy(), [Finance1, Director, Director2], Now).IsSuccess, Is.True);
+        });
+    }
+
+    [Test]
+    public void Submit_WhenOnlyFinanceUserIsTheRequester_FailsWithNoEligibleApprover()
+    {
+        var request = DraftRequest(7_000m, requester: Finance1);
+
+        var result = request.Submit(Finance1, Director, DefaultPolicy(), [Finance1, Director], Now);
+
+        Assert.That(result.Error?.Code, Is.EqualTo("request.no_eligible_approver"));
+    }
+
+    [Test]
+    public void Submit_SmallAmount_NeedsNoFinanceOrDirectorAvailable() =>
+        Assert.That(DraftRequest(1_000m).Submit(Employee, Manager, DefaultPolicy(), [], Now).IsSuccess, Is.True);
 }

@@ -111,9 +111,18 @@ public sealed class Request
     /// Submits the request for approval (BR-10..BR-12, BR-16): starts a new round whose steps are
     /// generated from <paramref name="policy"/>. The Manager step is assigned to the requester's manager.
     /// </summary>
-    public Result Submit(Actor actor, int? requesterManagerId, ApprovalPolicy policy, DateTimeOffset now)
+    /// <param name="requesterManager">The requester's manager if active, otherwise null (BR-12).</param>
+    /// <param name="activeApprovers">Active Finance and Director users: a chain is only started if every
+    /// step has someone who may decide it, so no request can get stuck in approval (BR-13a).</param>
+    public Result Submit(
+        Actor actor,
+        Actor? requesterManager,
+        ApprovalPolicy policy,
+        IReadOnlyCollection<Actor> activeApprovers,
+        DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(activeApprovers);
 
         if (actor.UserId != RequesterId)
         {
@@ -125,17 +134,32 @@ public sealed class Request
             return RequestErrors.InvalidTransition(Status, "submit");
         }
 
-        if (requesterManagerId is null)
+        if (requesterManager is not { } manager
+            || manager.UserId == RequesterId
+            || !ApprovalStep.IsEligibleRole(StepKind.Manager, manager.Role))
         {
             return RequestErrors.RequesterHasNoManager;
+        }
+
+        var templates = policy.StepsFor(Amount);
+
+        // BR-20/BR-21: later steps need someone other than the requester and the manager (who decides step 1).
+        foreach (var template in templates.Where(t => t.Kind != StepKind.Manager))
+        {
+            var hasDecider = activeApprovers.Any(a =>
+                ApprovalStep.IsEligibleRole(template.Kind, a.Role) && a.UserId != RequesterId && a.UserId != manager.UserId);
+            if (!hasDecider)
+            {
+                return RequestErrors.NoEligibleApprover(template.Kind);
+            }
         }
 
         var previousStatus = Status;
         CurrentRound++;
 
-        foreach (var template in policy.StepsFor(Amount))
+        foreach (var template in templates)
         {
-            var assigneeId = template.Kind == StepKind.Manager ? requesterManagerId : null;
+            var assigneeId = template.Kind == StepKind.Manager ? manager.UserId : (int?)null;
             _steps.Add(new ApprovalStep(CurrentRound, template.StepOrder, template.Kind, assigneeId));
         }
 
